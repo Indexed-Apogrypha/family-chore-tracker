@@ -18,10 +18,11 @@ behavior that contradicts the PRD, update the PRD in the same change.
 ## Status
 
 Early. Built so far: the **reference→verdict tracer bullet** (the core judging
-pipeline, end-to-end, behind clean seams) and **`computeStreak`** (the pure v1
-streak policy). Not yet built (see PRD): the Next.js PWA, Supabase
-(Postgres/Auth/Storage), camera capture, streak/history *persistence and UI*,
-and accounts.
+pipeline, end-to-end, behind clean seams), **`computeStreak`** (the pure v1
+streak policy), and **`referenceService`** (versioned references behind an
+in-memory persistence seam). Not yet built (see PRD): the Next.js PWA, the live
+Supabase (Postgres/Auth/Storage) adapters behind the persistence seams, camera
+capture, streak/history *UI*, and accounts.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -91,6 +92,29 @@ fail-free run; `lastPassDate` = the latest passed day. Anchored to the latest da
 in the data (never `Date.now()`), so it stays deterministic. A stricter
 "missed-day-breaks" variant is a documented future knob (`gapBreaks`/`asOf`).
 
+## The reference seam (`src/reference/`)
+
+`referenceService` owns the **`chore_references.isCurrent` invariant** — exactly
+one current reference per chore, with prior versions retained, never deleted
+(PRD User Story 5) — over a dumb `ReferenceStore` port. It is the
+persistence-side analog of the `JudgeClient` vendor seam: the *system* owns the
+invariant, not the storage layer, the same way it owns the verdict and streak
+policies.
+
+| File | Responsibility |
+| --- | --- |
+| `types.ts` | `ChoreReference`, `ReferenceDraft`, and the `ReferenceStore` port (the future-Supabase seam). Reuses the judge core's `ImageInput`. |
+| `referenceService.ts` | `setReference` / `getCurrentReference` / `listReferences` — free functions taking the store first (like `runJudgment(client, input)`). The invariant lives in `setReference`: demote the prior current, then insert the new one as current. |
+| `memoryStore.ts` | `InMemoryReferenceStore`, the fully-working fake (sibling of `FakeJudgeClient`) — insertion-ordered, with an injectable id/clock for deterministic tests. |
+
+Every `setReference` is a new version even if the bytes match a prior one (no
+dedup — a re-upload is a deliberate, history-worthy act). The live
+`SupabaseReferenceStore` is **deferred** and, like `gemini.ts`, stays **out of
+`index.ts`**: it will keep bytes in Supabase Storage + a path on the row, and
+make demote+insert atomic with a transaction and a partial unique index
+(`WHERE is_current`). `choreId` is an opaque key here — chore existence isn't
+validated until `choreService` exists.
+
 ## Commands
 
 ```bash
@@ -114,10 +138,12 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 
 Test external behavior (inputs→outputs), not internals, so tests survive
 refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths),
-`computeStreak` (crafted event sequences: streaks, breaks, gaps), and
-`parseModelJudgment` (contract enforcement). The model's actual visual
-judgment is non-deterministic and belongs in eval-style testing, **not** unit
-tests; use `FakeJudgeClient` to exercise the pipeline without a live model.
+`computeStreak` (crafted event sequences: streaks, breaks, gaps),
+`referenceService` (the `isCurrent` invariant, behaviorally, over
+`InMemoryReferenceStore`), and `parseModelJudgment` (contract enforcement). The
+model's actual visual judgment is non-deterministic and belongs in eval-style
+testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
+without a live model.
 
 ## Handling children's images
 
