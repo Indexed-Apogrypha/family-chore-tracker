@@ -17,10 +17,11 @@ behavior that contradicts the PRD, update the PRD in the same change.
 
 ## Status
 
-Early. The first slice built is the **reference→verdict tracer bullet**: the
-core judging pipeline, end-to-end, behind clean seams. Not yet built (see PRD):
-the Next.js PWA, Supabase (Postgres/Auth/Storage), camera capture, streaks,
-parent history, and accounts.
+Early. Built so far: the **reference→verdict tracer bullet** (the core judging
+pipeline, end-to-end, behind clean seams) and **`computeStreak`** (the pure v1
+streak policy). Not yet built (see PRD): the Next.js PWA, Supabase
+(Postgres/Auth/Storage), camera capture, streak/history *persistence and UI*,
+and accounts.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -65,6 +66,31 @@ The model must return strict JSON: `matches_reference`, `verdict`, `confidence`
 `uncertain`, `notes`. Enforced by `ModelJudgmentSchema`. Always validate model
 output — never trust it raw.
 
+## The gamification seam (`src/streak/`)
+
+`computeStreak(submissions, verdicts, options?) → StreakState` is a pure policy
+function over the submission/verdict event stream — the sibling of
+`evaluateVerdict`. The *system* owns the streak definition; streaks are
+**computed, never stored** (PRD). Keep it pure and unit-tested.
+
+| File | Responsibility |
+| --- | --- |
+| `types.ts` | `StreakSubmission`, `StreakVerdict` (reuses the judge's `VerdictResult`/`VerdictStatus`), `StreakOptions`, `StreakState`. |
+| `computeStreak.ts` | `DEFAULT_TIME_ZONE` + the pure v1 streak policy. |
+
+### The v1 streak policy (don't drift from this without updating PRD + tests)
+
+Verdicts are bucketed to calendar days (in `timeZone`, default UTC; best-of-day,
+so a fail-then-fix on the same day still counts as passed). Then **a passed day
+extends the streak, a confirmed `failed` day breaks it, and everything else
+(`needs_review` and missed days) is transparent** — it neither extends nor
+breaks. The fairness rationale mirrors the verdict policy: an uncertain call must
+not unfairly pass *or* fail the child, and "hasn't tidied yet today" is not a
+failure. `current` = passed days since the last confirmed fail; `longest` = best
+fail-free run; `lastPassDate` = the latest passed day. Anchored to the latest day
+in the data (never `Date.now()`), so it stays deterministic. A stricter
+"missed-day-breaks" variant is a documented future knob (`gapBreaks`/`asOf`).
+
 ## Commands
 
 ```bash
@@ -87,8 +113,9 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 ## Testing philosophy (from PRD)
 
 Test external behavior (inputs→outputs), not internals, so tests survive
-refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths)
-and `parseModelJudgment` (contract enforcement). The model's actual visual
+refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths),
+`computeStreak` (crafted event sequences: streaks, breaks, gaps), and
+`parseModelJudgment` (contract enforcement). The model's actual visual
 judgment is non-deterministic and belongs in eval-style testing, **not** unit
 tests; use `FakeJudgeClient` to exercise the pipeline without a live model.
 
