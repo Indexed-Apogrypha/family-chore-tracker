@@ -34,12 +34,19 @@ and verified by `npm run typecheck` + the keyless `npm run build`, not yet again
 a live project (see "The Supabase adapters" below). Also built: the **accounts
 data-model + RLS foundation** — the `families`/`users` tables, real `family_id`
 foreign keys, family-aware adapters, and per-family **RLS policies** (migration
-`0002_accounts.sql`), scaffolded the same way. The policies are **dormant** under
-the service-role key (which bypasses RLS); per-family scoping is enforced in the
-adapters meanwhile, so the app runs as a single **seeded** family. Not yet built
-(see PRD): Supabase **Auth** + the login/provisioning UI, the
-service-role→authenticated-client **flip** that activates the RLS policies,
-child-record-level scoping, and an offline service worker.
+`0002_accounts.sql`). And now the **full accounts + Auth layer** (migration
+`0003_auth.sql` + `lib/server/auth.ts`, `proxy.ts`, `app/auth/`, `app/login/`,
+`app/parent/children/`): Supabase **Auth** (email/password parents;
+parent-provisioned, username-based children), login/sign-up/sign-out + the
+child-provisioning UI, PWA **role gating**, **per-child RLS scoping**, and the
+**service-role→authenticated-client flip** that makes the RLS policies actually
+enforce. **All env-gated** (see "The auth layer"): with no `SUPABASE_ANON_KEY` the
+app falls back to the legacy single-implicit-family / role-by-URL / no-login mode —
+the keyless default here + in CI. Verified by `npm run typecheck` + the keyless
+`npm run build` + the unchanged 68 tests + a keyless dev smoke; the **live auth flow
+is not runtime-verified** (no live Supabase here — the same scaffold-&-defer posture
+as `gemini.ts`/the adapters). Not yet built (see PRD): an offline service worker,
+`family_id` `NOT NULL` + backfill, and Storage object RLS.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -165,7 +172,8 @@ bytes→Storage, EXIF→jsonb, `family_id` now a real per-family FK the adapter 
 on both writes (submission + verdict) and filters reads by — and stays **out of
 `index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `choreId` existence is
 checkable via `getChore` (the chore seam; wiring it in is the next step), while
-`childId` stays opaque until accounts exist.
+`childId` is now the child's **auth-user id** in auth mode (the per-child RLS policy
+keys on it), or omitted in the legacy single-family mode.
 
 ## The chore seam (`src/chore/`)
 
@@ -218,6 +226,7 @@ env-gated integration test is the follow-up once credentials exist.
 | `src/{chore,reference,submission}/supabaseStore.ts` | `Supabase{Chore,Reference,Submission}Store` — implement the ports; snake_case row ↔ camelCase domain mapping; oldest→newest by `created_at`. Each takes `(ctx, familyId)`: it **stamps `family_id` on every write and filters every read by it** (the constructor binding keeps the ports/services/fakes/tests frozen). |
 | `supabase/migrations/0001_init.sql` | The four data tables (`chores`, `chore_references`, `submissions`, `verdicts`), the partial unique index `WHERE is_current`, the atomic `set_current_reference` RPC, and **RLS enabled with no policies**. |
 | `supabase/migrations/0002_accounts.sql` | The accounts foundation: the `families`/`users` tables, real `family_id` FKs on the four data tables, the `private.auth_family_id()` `SECURITY DEFINER` helper (the RLS-recursion breaker), the `set_current_reference` re-create with `p_family_id`, and the per-family **RLS policies**. |
+| `supabase/migrations/0003_auth.sql` | The auth activations: `users.username` (a child's login handle), the `private.auth_role()` helper, and **child-record-level RLS** — submissions/verdicts tighten so a child sees/inserts only their own rows while a parent sees the whole family. |
 
 **Env-gated in `container.ts`:** all three stores switch **together** to Supabase
 when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (dynamic import keeps the
@@ -235,12 +244,52 @@ service-role key (which BYPASSES RLS), so per-family correctness *today* comes f
 the adapters' own stamping/filtering; the RLS policies are the **dormant-but-ready**
 layer that activates only at the future authenticated-client flip — both are
 intentional, neither redundant (delete the adapter filtering "because RLS exists"
-and tenancy breaks silently under the service role). **Still deferred:** Supabase
-**Auth** + the login/provisioning UI, the authenticated-client flip,
-child-record-level scoping, populating `users` (empty until Auth — so the seeded
-family is "ownerless", fine because the service role bypasses the users-reading
-policies), `family_id` NOT NULL + backfill, and the Storage bucket (a manual
-prerequisite the migration does not create).
+and tenancy breaks silently under the service role). The policies stop being dormant
+in **auth mode** (`SUPABASE_ANON_KEY` set): user-facing queries run through the
+authenticated client, so the RLS policies enforce and the adapter filtering becomes
+defense-in-depth — see "The auth layer". **Still deferred:** `family_id` `NOT NULL`
++ backfill; **Storage object RLS** (photo bytes stay on the service-role client
+meanwhile — see `SupabaseContext.storageClient`); the Storage bucket itself (a manual
+prerequisite the migration does not create); and an env-gated live integration test.
+
+## The auth layer (`lib/server/auth.ts`, `proxy.ts`, `app/auth/`, `app/login/`)
+
+Real Supabase Auth + per-family RLS, **env-gated like persistence and the judge**:
+`authMode()` is true only when `SUPABASE_ANON_KEY` is set alongside the persistence
+keys. Three runtime modes, all behind the identical ports:
+
+1. **In-memory** (no Supabase): one implicit family, no login. The keyless default + CI.
+2. **Service-role** (URL + service-role key, no anon): the live stores under the
+   service-role key, one seeded family, no login, RLS bypassed.
+3. **Auth** (also the anon key → `authMode()`): login required; per-request stores
+   bound to the **signed-in user's** family, with DB I/O on an **authenticated**
+   (anon-key + user-JWT) client so the per-family + per-child RLS policies enforce.
+
+**The flip is the whole point, and it touches only the wiring.** The `Supabase*Store`
+adapters and the ports are unchanged — a store just receives a different `ctx.client`
+(the user's authenticated client vs the service-role one) and a different bound
+`familyId` (the caller's vs the seeded one). Storage I/O stays on the service-role
+client (`SupabaseContext.storageClient`); the private bucket has no per-family object
+policies yet (a documented compromise — bytes are reachable only via a family-scoped
+DB row).
+
+| File | Responsibility |
+| --- | --- |
+| `lib/server/auth.ts` | `authMode()`; `getAuthedClient()` (per-request `@supabase/ssr` server client, cookies via `next/headers`, `cache()`d); `getAdminContext()` (the service-role context, for provisioning + Storage); `getIdentity()` (`{ userId, familyId, role, username }` from the user's own `users` row via RLS `users_select_self`); `requireUser`/`requireParent`/`requireChild` (redirect guards). `import 'server-only'`. |
+| `proxy.ts` | The Next 16 `proxy` (the renamed `middleware`): refreshes the session cookie each request; a **no-op** when auth is unconfigured. |
+| `app/auth/actions.ts` | `signUpParentAction` (creates the family + parent `users` row), `signInParentAction`, `signInChildAction` (username→synthetic email), `signOutAction`, `provisionChildAction` (parent-only; mints a confirmed child auth user via the admin API + inserts its `users` row). |
+| `app/login/` | The login UI — parent sign-in / create-family / child sign-in tabs. |
+| `app/parent/children/` | Parent-only: provision + list the family's children. |
+
+**Children have no email** (PRD: parent-provisioned, no self-registration): a child's
+username is slugified and a **synthetic auth email** (`<slug>@children.chore.local`)
+is derived deterministically, so login needs only the username + password — no email
+delivery. **The container owns the flip** (`getStores`/`getSeededChore` branch on
+`authMode()`); pages call `requireParent`/`requireChild`, and Server Actions thread
+`childId` = the session user id. **Manual prerequisite:** turn OFF "Confirm email" in
+Supabase Auth for v1 (parents need an immediate session). **Not runtime-verified
+here** — no live Supabase; typecheck + keyless build + tests + a keyless dev smoke are
+the guarantees, exactly as for `gemini.ts`/the adapters.
 
 ## The PWA (`app/`, `lib/server/`)
 
@@ -255,14 +304,13 @@ client import is a build error. Client components import the core's **types only
 
 | File | Responsibility |
 | --- | --- |
-| `lib/server/container.ts` | The composition root — **env-gates** the three stores (Supabase when keyed, else in-memory on `globalThis` to survive dev HMR), seeds the single "Tidy room" chore (find-or-create) — and, in Supabase mode, find-or-creates the one family and binds its id to the three stores `(ctx, familyId)` — and exposes `getStores` / `getSeededChore` / `buildSubmitDeps` / `getStreakState`. **The only place wired to a concrete persistence + judge implementation.** |
+| `lib/server/container.ts` | The composition root — **env-gates** persistence across three modes (in-memory; service-role single-family; per-request **authenticated** family-scoped stores in `authMode()` — see "The auth layer"), seeds the "Tidy room" chore (find-or-create), and exposes `getStores` / `getSeededChore` / `buildSubmitDeps` / `getStreakState`. **The only place wired to a concrete persistence + judge implementation.** |
 | `app/actions.ts` | `setReferenceAction` / `submitChoreAction` (`'use server'`) — read the `<input capture>` file from FormData, convert to the core's `ImageInput` (base64, no `data:` prefix), and call `setReference` / `submitChore`. Map `NoCurrentReferenceError` to a friendly signal; return only serializable data. |
-| `app/{page,parent/page,child/page,parent/history/page}.tsx` | Server Components reading the container directly. Marked `dynamic = 'force-dynamic'` (live per-request state, not a build-time snapshot). |
-| `app/components/*` | `ReferenceForm` / `SubmitForm` (`'use client'`, the camera `<input>` + `useActionState`), and presentational `VerdictCard` / `StreakBadge` / `PhotoThumb` / `Nav`. |
+| `app/{page,parent/page,child/page,parent/history/page,login/page,parent/children/page}.tsx` | Server Components reading the container directly, `dynamic = 'force-dynamic'`. In `authMode()` each guards with `requireParent`/`requireChild`/`getIdentity`; in legacy mode the guards are transparent. |
+| `app/components/*` + form clients | `ReferenceForm` / `SubmitForm` / `login/LoginForms` / `parent/children/ProvisionChildForm` (`'use client'`, `useActionState`); presentational `VerdictCard` / `StreakBadge` / `PhotoThumb`; `Nav` is now an async Server Component, role-aware in auth mode (+ a sign-out form). |
 | `app/manifest.ts` | The web app manifest (installable PWA); no service worker yet. |
 
-**Two deliberate bridges, each swapped behind an existing seam later with no
-caller changes:**
+**Three deliberate bridges, each swapped behind its env with no caller changes:**
 
 1. **Persistence is env-gated** — the live `Supabase*Store` adapters when
    `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (loaded via dynamic
@@ -275,12 +323,16 @@ caller changes:**
    (dynamic `import`, so `@google/genai` only loads when keyed) when
    `GEMINI_API_KEY` is set, otherwise `FakeJudgeClient(CLEAN_PASS)` — so the app
    runs with no key here and in CI.
+3. **Auth is env-gated** — real Supabase Auth + per-family RLS when
+   `SUPABASE_ANON_KEY` is set (`authMode()`), else the legacy no-login mode. See
+   "The auth layer".
 
-Accounts: the data-model + RLS **foundation** is built (`families`/`users` + dormant
-per-family policies; see "The Supabase adapters"), but **live Auth/login stays
-deferred** — the app runs as a single **seeded** family and `childId` is omitted. The
-large-photo body cap (`serverActions.bodySizeLimit` in `next.config.mjs`) is a
-stopgap until direct-to-Storage upload removes large bodies from the action path.
+Accounts + Auth are **built and env-gated** (see "The auth layer" and bridge 3
+above): in `authMode()` login is required and the stores are authenticated +
+family-scoped; unconfigured, the app runs as a single implicit family with no login
+and `childId` omitted. The large-photo body cap (`serverActions.bodySizeLimit` in
+`next.config.mjs`) is a stopgap until direct-to-Storage upload removes large bodies
+from the action path.
 
 ## Commands
 
@@ -295,8 +347,10 @@ npm run demo      # runs the tracer bullet end-to-end with the fake judge
 # Live path (needs a key): cp .env.example .env, set GEMINI_API_KEY, then:
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
-# SUPABASE_STORAGE_BUCKET, run the migrations in order (supabase/migrations/0001_init.sql
-# then 0002_accounts.sql), create a private Storage bucket. Unset → in-memory (the default).
+# SUPABASE_STORAGE_BUCKET, run the migrations in order (0001_init.sql, 0002_accounts.sql,
+# 0003_auth.sql), create a private Storage bucket. Unset → in-memory (the default).
+# Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
+# Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
 ```
 
 ## Conventions

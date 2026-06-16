@@ -5,6 +5,7 @@ import { setReference } from '../src/reference';
 import { submitChore, NoCurrentReferenceError } from '../src/submission';
 import type { ImageInput, Verdict } from '../src/judge';
 import { getStores, getSeededChore, buildSubmitDeps } from '../lib/server/container';
+import { authMode, requireChild, requireParent } from '../lib/server/auth';
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -48,6 +49,9 @@ export async function setReferenceAction(
   const image = await fileToImageInput(formData);
   if (isError(image)) return { status: 'error', message: image.error };
 
+  // Only a signed-in parent may set the reference (authMode); a no-op otherwise.
+  if (authMode()) await requireParent();
+
   const { references } = await getStores();
   const { choreId } = await getSeededChore();
   await setReference(references, choreId, image);
@@ -64,6 +68,10 @@ export async function submitChoreAction(
   const image = await fileToImageInput(formData);
   if (isError(image)) return { status: 'error', message: image.error };
 
+  // In authMode only a signed-in child submits; attribute the submission to them
+  // (the store stamps child_id, and the child-scoped RLS policy requires it).
+  const childId = authMode() ? (await requireChild()).userId : undefined;
+
   const deps = await buildSubmitDeps();
   const { choreId, choreName } = await getSeededChore();
 
@@ -72,7 +80,7 @@ export async function submitChoreAction(
     // capture>` upload doesn't surface EXIF without a parser, so we record null
     // for now; a later slice can parse it server-side from the buffer without
     // changing the submitChore contract.
-    const { verdict } = await submitChore(deps, { choreId, choreName, image, exif: null });
+    const { verdict } = await submitChore(deps, { choreId, choreName, image, exif: null, childId });
     revalidatePath('/child');
     revalidatePath('/parent/history');
     revalidatePath('/');

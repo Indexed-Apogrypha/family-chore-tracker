@@ -20,16 +20,20 @@ pass), so the whole flow runs locally with no key or network. Set `GEMINI_API_KE
 (see `.env.example`) to use the live Gemini vision model.
 
 Persistence works the same way: with no `SUPABASE_*` variables set, the app uses
-**in-memory stores** (which reset when the server restarts). To use the live
-Supabase backend, set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+**in-memory stores** (which reset when the server restarts) and the legacy
+single-family, role-by-URL mode with **no login**. To use the live Supabase
+backend, set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
 `SUPABASE_STORAGE_BUCKET` (see `.env.example`), run the migrations in order
-(`supabase/migrations/0001_init.sql` then `0002_accounts.sql`), and create a
-**private** Storage bucket of that name. The two backends sit behind identical
-ports, so only the composition root (`lib/server/container.ts`) is aware of which
-one is active.
+(`0001_init.sql`, `0002_accounts.sql`, `0003_auth.sql`), and create a **private**
+Storage bucket of that name. The two backends sit behind identical ports, so only
+the composition root (`lib/server/container.ts`) is aware of which one is active.
 
-The schema includes the accounts tables (`families`/`users`) and per-family
-row-level security, but the app still runs as a single seeded family under the
-service-role key — **no login is required**. Supabase Auth and the login flow are
-a later slice; until then the RLS policies are dormant (the service-role key
-bypasses RLS) and per-family scoping is enforced by the adapters.
+**Accounts & Auth.** Set `SUPABASE_ANON_KEY` as well to turn on real Supabase Auth
++ per-family row-level security. Login becomes required: a parent signs up (which
+creates their family), then provisions child accounts (children sign in with a
+username — no self-registration), and the until-now dormant RLS policies enforce
+because user-facing queries run through an authenticated (anon-key + user-JWT)
+client instead of the service role. Manual prerequisite: in the Supabase Auth
+settings, turn **off "Confirm email"** for v1. With `SUPABASE_ANON_KEY` unset, the
+app stays single-family under the service-role key with no login. The live auth
+flow needs a real Supabase project and isn't exercised by the keyless build/tests.

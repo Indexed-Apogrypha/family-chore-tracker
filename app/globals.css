@@ -224,3 +224,36 @@ button:disabled {
   display: grid;
   gap: 0.5rem;
 }
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.tab {
+  background: var(--card);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.7rem;
+  font-weight: 600;
+}
+
+.tab-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.nav-signout {
+  margin: 0;
+  display: inline;
+}
+
+.linklike {
+  background: none;
+  color: var(--accent);
+  padding: 0;
+  font-weight: 600;
+}
