@@ -19,10 +19,12 @@ behavior that contradicts the PRD, update the PRD in the same change.
 
 Early. Built so far: the **reference→verdict tracer bullet** (the core judging
 pipeline, end-to-end, behind clean seams), **`computeStreak`** (the pure v1
-streak policy), and **`referenceService`** (versioned references behind an
-in-memory persistence seam). Not yet built (see PRD): the Next.js PWA, the live
-Supabase (Postgres/Auth/Storage) adapters behind the persistence seams, camera
-capture, streak/history *UI*, and accounts.
+streak policy), **`referenceService`** (versioned references behind an in-memory
+persistence seam), and **`submissionService`** (orchestrates a child's submission
+→ reference lookup → judge → persisted submission+verdict, over the same seam).
+Not yet built (see PRD): `choreService`, the Next.js PWA, the live Supabase
+(Postgres/Auth/Storage) adapters behind the persistence seams, camera capture,
+streak/history *UI*, and accounts.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -115,6 +117,35 @@ make demote+insert atomic with a transaction and a partial unique index
 (`WHERE is_current`). `choreId` is an opaque key here — chore existence isn't
 validated until `choreService` exists.
 
+## The submission seam (`src/submission/`)
+
+`submissionService` orchestrates a child's chore submission (PRD stories 7–9,
+15, 19): it **composes** the existing seams — `getCurrentReference` (reference) →
+`runJudgment` (the vendor seam) → persist — over a dumb `SubmissionStore` port
+(the future-Supabase boundary, sibling of `ReferenceStore`). It reuses the
+judging and reference logic; it never re-implements the verdict policy or the
+`isCurrent` invariant. `SubmissionRecord`/`VerdictRecord` reuse the judge's
+`ImageInput`/`Verdict` and are structurally `StreakSubmission`/`StreakVerdict`,
+so records feed `computeStreak` with no field mapping.
+
+| File | Responsibility |
+| --- | --- |
+| `types.ts` | `SubmissionRecord`, `VerdictRecord` (the judge `Verdict` + a persistence envelope), the drafts, and the `SubmissionStore` port. Reuses `ImageInput`/`Verdict`. |
+| `errors.ts` | `NoCurrentReferenceError` — thrown when a chore has no reference to judge against (sibling of `JudgmentParseError`). |
+| `submissionService.ts` | `submitChore(deps, input)` / `getHistory(store, choreId?)` — free functions over a `{ judge, references, submissions }` deps object. |
+| `memoryStore.ts` | `InMemorySubmissionStore`, the fully-working fake (sibling of `FakeJudgeClient`/`InMemoryReferenceStore`) — two insertion-ordered arrays, injectable ids/clock. |
+
+**Submission + verdict are two writes, and the submission is stored *before*
+judging — by design.** A submission whose judging fails (model down, parse
+error) stays persisted with no verdict, so the attempt and its EXIF remain
+auditable for future anti-gaming (story 19), and `computeStreak` already treats
+an unverdicted submission as a transparent non-event. `submitChore` is **not
+transactional in this slice**; making the pair atomic is a deferred
+`SupabaseSubmissionStore` concern, like `ReferenceStore`'s demote+insert. That
+live adapter — bytes→Storage, EXIF→jsonb, `family_id` for RLS — stays **out of
+`index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `childId`/`choreId` are
+opaque keys until `choreService`/accounts exist.
+
 ## Commands
 
 ```bash
@@ -144,6 +175,14 @@ refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths
 model's actual visual judgment is non-deterministic and belongs in eval-style
 testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
 without a live model.
+
+`submissionService` gets a **light integration test** (PRD): compose
+`submitChore` with `FakeJudgeClient` + `InMemoryReferenceStore` (seeded via
+`setReference`) + `InMemorySubmissionStore`, asserting the composed behavior
+(records persisted, the current reference used, EXIF/childId threaded, a failed
+judge still records the submission) and that the stored records feed
+`computeStreak` with no mapping — deterministic via injected ids/clock, never
+`Date.now()`.
 
 ## Handling children's images
 
