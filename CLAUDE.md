@@ -45,8 +45,13 @@ app falls back to the legacy single-implicit-family / role-by-URL / no-login mod
 the keyless default here + in CI. Verified by `npm run typecheck` + the keyless
 `npm run build` + the unchanged 68 tests + a keyless dev smoke; the **live auth flow
 is not runtime-verified** (no live Supabase here — the same scaffold-&-defer posture
-as `gemini.ts`/the adapters). Not yet built (see PRD): an offline service worker,
-`family_id` `NOT NULL` + backfill, and Storage object RLS.
+as `gemini.ts`/the adapters). And now the **Storage object RLS** slice (migration
+`0004_storage_rls.sql`): photo **bytes** are written under a family-prefixed object
+path (`<family_id>/…`) and Storage I/O rides the authenticated client, so the
+per-family RLS that already guards the DB rows now guards the bytes too (PRD User
+Story 17) — scaffold-&-defer like the other migrations (SQL review-only, not
+runtime-verified). Not yet built (see PRD): an offline service worker, and
+`family_id` `NOT NULL` + backfill.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -221,12 +226,13 @@ env-gated integration test is the follow-up once credentials exist.
 | File | Responsibility |
 | --- | --- |
 | `src/supabase/client.ts` | `createSupabaseContext(opts?)` → `{ client, bucket }` (env: `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET`; throws if missing). The only SDK value-import site (mirrors `GeminiJudgeOptions`). **Not** `server-only` — the core stays framework-portable; the server-only boundary is `container.ts`. |
-| `src/supabase/storage.ts` | `uploadImage` / `downloadImage` — bytes live in Storage; reads **materialize** `ImageInput` (base64) back from the object path. |
+| `src/supabase/storage.ts` | `uploadImage` / `downloadImage` — bytes live in Storage; reads **materialize** `ImageInput` (base64) back from the object path. I/O rides `ctx.client` (the authenticated client in auth mode), and objects are written under a **family-prefixed** path, so the `0004` Storage RLS enforces per-family on the bytes. |
 | `src/supabase/family.ts` | `ensureSeededFamily(ctx, name)` — find-or-create the single v1 family (the families analog of `ensureSeededChore`). The **only** `families` access; there is intentionally no families port/service yet, so it sits in the SDK-confinement zone rather than leaking `.from('families')` into `container.ts`. |
 | `src/{chore,reference,submission}/supabaseStore.ts` | `Supabase{Chore,Reference,Submission}Store` — implement the ports; snake_case row ↔ camelCase domain mapping; oldest→newest by `created_at`. Each takes `(ctx, familyId)`: it **stamps `family_id` on every write and filters every read by it** (the constructor binding keeps the ports/services/fakes/tests frozen). |
 | `supabase/migrations/0001_init.sql` | The four data tables (`chores`, `chore_references`, `submissions`, `verdicts`), the partial unique index `WHERE is_current`, the atomic `set_current_reference` RPC, and **RLS enabled with no policies**. |
 | `supabase/migrations/0002_accounts.sql` | The accounts foundation: the `families`/`users` tables, real `family_id` FKs on the four data tables, the `private.auth_family_id()` `SECURITY DEFINER` helper (the RLS-recursion breaker), the `set_current_reference` re-create with `p_family_id`, and the per-family **RLS policies**. |
 | `supabase/migrations/0003_auth.sql` | The auth activations: `users.username` (a child's login handle), the `private.auth_role()` helper, and **child-record-level RLS** — submissions/verdicts tighten so a child sees/inserts only their own rows while a parent sees the whole family. |
+| `supabase/migrations/0004_storage_rls.sql` | **Storage object RLS:** per-family `select`/`insert` policies on `storage.objects`, keyed on the family-prefixed object path (`(storage.foldername(name))[1]` = `private.auth_family_id()`), so the photo **bytes** get the per-family isolation the rows already have (US17). |
 
 **Env-gated in `container.ts`:** all three stores switch **together** to Supabase
 when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (dynamic import keeps the
@@ -247,10 +253,13 @@ intentional, neither redundant (delete the adapter filtering "because RLS exists
 and tenancy breaks silently under the service role). The policies stop being dormant
 in **auth mode** (`SUPABASE_ANON_KEY` set): user-facing queries run through the
 authenticated client, so the RLS policies enforce and the adapter filtering becomes
-defense-in-depth — see "The auth layer". **Still deferred:** `family_id` `NOT NULL`
-+ backfill; **Storage object RLS** (photo bytes stay on the service-role client
-meanwhile — see `SupabaseContext.storageClient`); the Storage bucket itself (a manual
-prerequisite the migration does not create); and an env-gated live integration test.
+defense-in-depth — see "The auth layer". **Storage object RLS (the `0004` slice):**
+photo bytes are now written under a **family-prefixed** object path and Storage I/O
+rides the authenticated client, so the per-family RLS guards the bytes too, not just
+the rows (US17) — `SupabaseContext` no longer carries the service-role `storageClient`
+escape hatch. **Still deferred:** `family_id` `NOT NULL` + backfill; the Storage bucket
+itself (a manual prerequisite the migration does not create); and an env-gated live
+integration test.
 
 ## The auth layer (`lib/server/auth.ts`, `proxy.ts`, `app/auth/`, `app/login/`)
 
@@ -268,10 +277,11 @@ keys. Three runtime modes, all behind the identical ports:
 **The flip is the whole point, and it touches only the wiring.** The `Supabase*Store`
 adapters and the ports are unchanged — a store just receives a different `ctx.client`
 (the user's authenticated client vs the service-role one) and a different bound
-`familyId` (the caller's vs the seeded one). Storage I/O stays on the service-role
-client (`SupabaseContext.storageClient`); the private bucket has no per-family object
-policies yet (a documented compromise — bytes are reachable only via a family-scoped
-DB row).
+`familyId` (the caller's vs the seeded one). Storage I/O rides that **same** client,
+and objects are written under a family-prefixed path, so the `0004` Storage policies
+isolate the photo bytes per family just as the row policies isolate the rows; the
+service role is now kept only for privileged provisioning + seeding, never for
+user-facing bytes.
 
 | File | Responsibility |
 | --- | --- |
@@ -348,7 +358,7 @@ npm run demo      # runs the tracer bullet end-to-end with the fake judge
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
 # SUPABASE_STORAGE_BUCKET, run the migrations in order (0001_init.sql, 0002_accounts.sql,
-# 0003_auth.sql), create a private Storage bucket. Unset → in-memory (the default).
+# 0003_auth.sql, 0004_storage_rls.sql), create a private Storage bucket. Unset → in-memory.
 # Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
 # Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
 ```

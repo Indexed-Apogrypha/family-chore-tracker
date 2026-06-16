@@ -14,14 +14,14 @@ import type { SupabaseContext } from './client';
  * require changing the port shape (rippling into the judge core + the PWA's
  * PhotoThumb), so it is explicitly future work, not this slice.
  *
- * Bytes go through `ctx.storageClient ?? ctx.client`. After the authenticated-
- * client flip the DB `client` respects RLS, but Storage I/O stays on the service-
- * role client (the private bucket has no per-family object policies yet — see
- * `SupabaseContext.storageClient`).
+ * Bytes go through `ctx.client` — the SAME client as DB I/O. After the
+ * authenticated-client flip that client respects RLS, and objects are written under
+ * a family-prefixed path (`<familyId>/...`), so the 0004 `storage.objects` policies
+ * enforce per-family isolation on the bytes just as the row policies do on the rows.
  */
 
 function objects(ctx: SupabaseContext) {
-  return (ctx.storageClient ?? ctx.client).storage.from(ctx.bucket);
+  return ctx.client.storage.from(ctx.bucket);
 }
 
 /** base64 ImageInput -> bytes -> upload to `path`. Throws on failure. */

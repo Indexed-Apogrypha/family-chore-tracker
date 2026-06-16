@@ -105,11 +105,12 @@ function getContainer(): Promise<Container> {
   return (globalForContainer.__choreContainer ??= buildContainer());
 }
 
-// Mode (3): AUTHENTICATED, family-scoped, per-request stores. DB I/O uses the
-// signed-in user's authenticated client (so RLS enforces); Storage stays on the
-// service-role admin client (`storageClient`). Bound to the caller's OWN family,
-// so what the adapters stamp/filter is exactly what the policies also allow. NOT
-// globally cached (per-user) — `cache()` memoizes within a single request only.
+// Mode (3): AUTHENTICATED, family-scoped, per-request stores. BOTH DB and Storage
+// I/O ride the signed-in user's authenticated client, so the per-family RLS policies
+// enforce on rows AND on photo bytes (the latter via 0004 + family-prefixed object
+// paths). Bound to the caller's OWN family, so what the adapters stamp/filter is
+// exactly what the policies also allow. NOT globally cached (per-user) — `cache()`
+// memoizes within a single request only.
 const getAuthedStores = cache(async (): Promise<Stores> => {
   const identity = await requireUser();
   const [{ SupabaseChoreStore }, { SupabaseReferenceStore }, { SupabaseSubmissionStore }, admin, client] =
@@ -120,7 +121,8 @@ const getAuthedStores = cache(async (): Promise<Stores> => {
       getAdminContext(),
       getAuthedClient(),
     ]);
-  const ctx = { client, bucket: admin.bucket, storageClient: admin.client };
+  // `admin` is here only for the bucket name now; DB + Storage both use `client`.
+  const ctx = { client, bucket: admin.bucket };
   return {
     chores: new SupabaseChoreStore(ctx, identity.familyId),
     references: new SupabaseReferenceStore(ctx, identity.familyId),
