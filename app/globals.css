@@ -1,0 +1,226 @@
+:root {
+  --accent: #0ea5e9;
+  --fg: #0f172a;
+  --muted: #64748b;
+  --pass: #16a34a;
+  --fail: #dc2626;
+  --warn: #b45309;
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --border: #e2e8f0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.5;
+}
+
+.app-header {
+  padding: 1rem;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+}
+
+.app-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.nav a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.app-main {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.stack > * + * {
+  margin-top: 1rem;
+}
+
+.cards {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.card {
+  display: block;
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  text-decoration: none;
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.capture-form {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.capture-label {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+input[type="file"] {
+  font: inherit;
+}
+
+button {
+  font: inherit;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--accent);
+  color: #fff;
+}
+
+button:disabled {
+  opacity: 0.6;
+}
+
+.thumb {
+  max-width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.streak {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 1rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.streak-current {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.streak-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  width: 100%;
+}
+
+.verdict {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 2px solid var(--border);
+}
+
+.verdict-pass {
+  border-color: var(--pass);
+  background: #f0fdf4;
+}
+
+.verdict-fail {
+  border-color: var(--fail);
+  background: #fef2f2;
+}
+
+.verdict-result {
+  font-size: 1.25rem;
+  font-weight: 800;
+  margin: 0 0 0.5rem;
+}
+
+.verdict-review {
+  font-weight: 700;
+  color: var(--warn);
+  margin: 0 0 0.5rem;
+}
+
+.verdict-deviations {
+  margin: 0.5rem 0 0;
+  padding-left: 1rem;
+}
+
+.dev-severity {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+.dev-high .dev-severity {
+  color: var(--fail);
+}
+
+.dev-medium .dev-severity {
+  color: var(--warn);
+}
+
+.dev-low .dev-severity {
+  color: var(--muted);
+}
+
+.notice {
+  padding: 1rem;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 0.75rem;
+}
+
+.err {
+  color: var(--fail);
+  font-weight: 600;
+}
+
+.ok {
+  color: var(--pass);
+  font-weight: 600;
+}
+
+.history {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.history-item {
+  display: grid;
+  gap: 0.5rem;
+}
