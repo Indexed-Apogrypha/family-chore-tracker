@@ -33,6 +33,7 @@ import type { JudgeClient } from '../../src/judge';
  */
 
 const SEEDED_CHORE_NAME = 'Tidy room';
+const SEEDED_FAMILY_NAME = 'My Family';
 
 interface Container {
   chores: ChoreStore;
@@ -55,14 +56,19 @@ const globalForContainer = globalThis as unknown as { __choreContainer?: Promise
 async function buildStores(): Promise<Pick<Container, 'chores' | 'references' | 'submissions'>> {
   if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     const { createSupabaseContext } = await import('../../src/supabase/client');
+    const { ensureSeededFamily } = await import('../../src/supabase/family');
     const { SupabaseChoreStore } = await import('../../src/chore/supabaseStore');
     const { SupabaseReferenceStore } = await import('../../src/reference/supabaseStore');
     const { SupabaseSubmissionStore } = await import('../../src/submission/supabaseStore');
     const ctx = createSupabaseContext(); // one shared client + bucket
+    // v1 is single-family: find-or-create the one family and bind its id to all
+    // three stores, which stamp it on writes + filter reads by it. The seam is the
+    // container's alone — the stores stay behind the unchanged ports.
+    const familyId = await ensureSeededFamily(ctx, SEEDED_FAMILY_NAME);
     return {
-      chores: new SupabaseChoreStore(ctx),
-      references: new SupabaseReferenceStore(ctx),
-      submissions: new SupabaseSubmissionStore(ctx),
+      chores: new SupabaseChoreStore(ctx, familyId),
+      references: new SupabaseReferenceStore(ctx, familyId),
+      submissions: new SupabaseSubmissionStore(ctx, familyId),
     };
   }
   return {

@@ -31,9 +31,15 @@ with camera capture, the verdict view, a streak badge, and a parent history list
 (`Supabase{Chore,Reference,Submission}Store`) behind the three persistence ports —
 Postgres + Storage, env-gated, with a SQL migration — scaffolded behind the seam
 and verified by `npm run typecheck` + the keyless `npm run build`, not yet against
-a live project (see "The Supabase adapters" below). Not yet built (see PRD):
-Supabase **Auth**, the `families`/`users` tables + per-family **RLS policies**
-(accounts), and an offline service worker.
+a live project (see "The Supabase adapters" below). Also built: the **accounts
+data-model + RLS foundation** — the `families`/`users` tables, real `family_id`
+foreign keys, family-aware adapters, and per-family **RLS policies** (migration
+`0002_accounts.sql`), scaffolded the same way. The policies are **dormant** under
+the service-role key (which bypasses RLS); per-family scoping is enforced in the
+adapters meanwhile, so the app runs as a single **seeded** family. Not yet built
+(see PRD): Supabase **Auth** + the login/provisioning UI, the
+service-role→authenticated-client **flip** that activates the RLS policies,
+child-record-level scoping, and an offline service worker.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -155,10 +161,11 @@ auditable for future anti-gaming (story 19), and `computeStreak` already treats
 an unverdicted submission as a transparent non-event. So the pair is
 **deliberately not one transaction** — the submission must survive a judge
 failure. The live `SupabaseSubmissionStore` (`./supabaseStore`) is **built** —
-bytes→Storage, EXIF→jsonb, `family_id` an inert column for future RLS — and stays
-**out of `index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `choreId`
-existence is checkable via `getChore` (the chore seam; wiring it in is the next
-step), while `childId` stays opaque until accounts exist.
+bytes→Storage, EXIF→jsonb, `family_id` now a real per-family FK the adapter stamps
+on both writes (submission + verdict) and filters reads by — and stays **out of
+`index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `choreId` existence is
+checkable via `getChore` (the chore seam; wiring it in is the next step), while
+`childId` stays opaque until accounts exist.
 
 ## The chore seam (`src/chore/`)
 
@@ -179,10 +186,13 @@ owns the `isCurrent` invariant.
 
 A chore's `name` is the source of the `choreName` string that `submitChore`
 threads into `runJudgment`'s prompt, so it is normalized once here at the write
-boundary. `chores.type`/`criteria` (a future rubric mode) and `family_id` (RLS)
-are **deferred schema seams**: like reference/submission, the in-memory `Chore`
-models only what v1 reads. The live `SupabaseChoreStore` (`./supabaseStore`) is
-**built** and stays **out of `index.ts`**, like
+boundary. `chores.type`/`criteria` (a future rubric mode) remain a **deferred
+schema seam**: like reference/submission, the in-memory `Chore` models only what
+v1 reads. `family_id`, by contrast, is **no longer inert** — it's a real per-family
+FK the adapter stamps on write and filters reads by (still absent from the domain
+`Chore` + the in-memory fake, by design — it's an adapter-construction detail). The
+live `SupabaseChoreStore` (`./supabaseStore`) is **built** and stays **out of
+`index.ts`**, like
 `gemini.ts`/`SupabaseReferenceStore`/`SupabaseSubmissionStore`. `getChore` is the
 public "assert a chore exists" API; **wiring it into reference/submission to
 replace their opaque-`choreId` treatment is the natural next integration** (not
@@ -204,8 +214,10 @@ env-gated integration test is the follow-up once credentials exist.
 | --- | --- |
 | `src/supabase/client.ts` | `createSupabaseContext(opts?)` → `{ client, bucket }` (env: `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `SUPABASE_STORAGE_BUCKET`; throws if missing). The only SDK value-import site (mirrors `GeminiJudgeOptions`). **Not** `server-only` — the core stays framework-portable; the server-only boundary is `container.ts`. |
 | `src/supabase/storage.ts` | `uploadImage` / `downloadImage` — bytes live in Storage; reads **materialize** `ImageInput` (base64) back from the object path. |
-| `src/{chore,reference,submission}/supabaseStore.ts` | `Supabase{Chore,Reference,Submission}Store` — implement the ports; snake_case row ↔ camelCase domain mapping; oldest→newest by `created_at`. |
+| `src/supabase/family.ts` | `ensureSeededFamily(ctx, name)` — find-or-create the single v1 family (the families analog of `ensureSeededChore`). The **only** `families` access; there is intentionally no families port/service yet, so it sits in the SDK-confinement zone rather than leaking `.from('families')` into `container.ts`. |
+| `src/{chore,reference,submission}/supabaseStore.ts` | `Supabase{Chore,Reference,Submission}Store` — implement the ports; snake_case row ↔ camelCase domain mapping; oldest→newest by `created_at`. Each takes `(ctx, familyId)`: it **stamps `family_id` on every write and filters every read by it** (the constructor binding keeps the ports/services/fakes/tests frozen). |
 | `supabase/migrations/0001_init.sql` | The four data tables (`chores`, `chore_references`, `submissions`, `verdicts`), the partial unique index `WHERE is_current`, the atomic `set_current_reference` RPC, and **RLS enabled with no policies**. |
+| `supabase/migrations/0002_accounts.sql` | The accounts foundation: the `families`/`users` tables, real `family_id` FKs on the four data tables, the `private.auth_family_id()` `SECURITY DEFINER` helper (the RLS-recursion breaker), the `set_current_reference` re-create with `p_family_id`, and the per-family **RLS policies**. |
 
 **Env-gated in `container.ts`:** all three stores switch **together** to Supabase
 when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (dynamic import keeps the
@@ -216,10 +228,19 @@ signed-URL optimization would need a **port change**, so it's future work.
 **Atomicity:** the reference demote+insert is one transaction via the
 `set_current_reference` RPC backed by the partial unique index; the
 submission+verdict pair stays **two writes by design** (the submission persists
-before judging). **Deferred:** the `families`/`users` tables, Supabase **Auth**,
-and per-family **RLS policies** — `family_id` is an inert column on every row, the
-server uses the service-role key (which bypasses RLS), and the migration does not
-create the Storage bucket (a manual prerequisite).
+before judging). **Accounts (the `0002` foundation):** the `families`/`users`
+tables + per-family **RLS policies** are built, and `family_id` is now a real FK
+the adapters stamp + filter on. **Belt-and-suspenders:** the server uses the
+service-role key (which BYPASSES RLS), so per-family correctness *today* comes from
+the adapters' own stamping/filtering; the RLS policies are the **dormant-but-ready**
+layer that activates only at the future authenticated-client flip — both are
+intentional, neither redundant (delete the adapter filtering "because RLS exists"
+and tenancy breaks silently under the service role). **Still deferred:** Supabase
+**Auth** + the login/provisioning UI, the authenticated-client flip,
+child-record-level scoping, populating `users` (empty until Auth — so the seeded
+family is "ownerless", fine because the service role bypasses the users-reading
+policies), `family_id` NOT NULL + backfill, and the Storage bucket (a manual
+prerequisite the migration does not create).
 
 ## The PWA (`app/`, `lib/server/`)
 
@@ -234,7 +255,7 @@ client import is a build error. Client components import the core's **types only
 
 | File | Responsibility |
 | --- | --- |
-| `lib/server/container.ts` | The composition root — **env-gates** the three stores (Supabase when keyed, else in-memory on `globalThis` to survive dev HMR), seeds the single "Tidy room" chore (find-or-create), and exposes `getStores` / `getSeededChore` / `buildSubmitDeps` / `getStreakState`. **The only place wired to a concrete persistence + judge implementation.** |
+| `lib/server/container.ts` | The composition root — **env-gates** the three stores (Supabase when keyed, else in-memory on `globalThis` to survive dev HMR), seeds the single "Tidy room" chore (find-or-create) — and, in Supabase mode, find-or-creates the one family and binds its id to the three stores `(ctx, familyId)` — and exposes `getStores` / `getSeededChore` / `buildSubmitDeps` / `getStreakState`. **The only place wired to a concrete persistence + judge implementation.** |
 | `app/actions.ts` | `setReferenceAction` / `submitChoreAction` (`'use server'`) — read the `<input capture>` file from FormData, convert to the core's `ImageInput` (base64, no `data:` prefix), and call `setReference` / `submitChore`. Map `NoCurrentReferenceError` to a friendly signal; return only serializable data. |
 | `app/{page,parent/page,child/page,parent/history/page}.tsx` | Server Components reading the container directly. Marked `dynamic = 'force-dynamic'` (live per-request state, not a build-time snapshot). |
 | `app/components/*` | `ReferenceForm` / `SubmitForm` (`'use client'`, the camera `<input>` + `useActionState`), and presentational `VerdictCard` / `StreakBadge` / `PhotoThumb` / `Nav`. |
@@ -255,7 +276,9 @@ caller changes:**
    `GEMINI_API_KEY` is set, otherwise `FakeJudgeClient(CLEAN_PASS)` — so the app
    runs with no key here and in CI.
 
-Accounts/auth stay deferred (single implicit family; `childId` omitted). The
+Accounts: the data-model + RLS **foundation** is built (`families`/`users` + dormant
+per-family policies; see "The Supabase adapters"), but **live Auth/login stays
+deferred** — the app runs as a single **seeded** family and `childId` is omitted. The
 large-photo body cap (`serverActions.bodySizeLimit` in `next.config.mjs`) is a
 stopgap until direct-to-Storage upload removes large bodies from the action path.
 
@@ -272,8 +295,8 @@ npm run demo      # runs the tracer bullet end-to-end with the fake judge
 # Live path (needs a key): cp .env.example .env, set GEMINI_API_KEY, then:
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
-# SUPABASE_STORAGE_BUCKET, run supabase/migrations/0001_init.sql, create a private
-# Storage bucket. Unset → in-memory stores (the default).
+# SUPABASE_STORAGE_BUCKET, run the migrations in order (supabase/migrations/0001_init.sql
+# then 0002_accounts.sql), create a private Storage bucket. Unset → in-memory (the default).
 ```
 
 ## Conventions
@@ -302,8 +325,9 @@ model's actual visual judgment is non-deterministic and belongs in eval-style
 testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
 without a live model. The live `Supabase*Store` adapters likewise have **no unit
 tests** — like `gemini.ts`, they're exercised by an env-gated live integration
-test (deferred until credentials exist), and the in-memory fakes stay the tested
-persistence path.
+test (deferred until credentials exist; it should also assert per-family stamping +
+filtering and, once auth lands, RLS isolation), and the in-memory fakes stay the
+tested persistence path.
 
 `submissionService` gets a **light integration test** (PRD): compose
 `submitChore` with `FakeJudgeClient` + `InMemoryReferenceStore` (seeded via

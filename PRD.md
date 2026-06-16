@@ -38,7 +38,7 @@ A mobile-first PWA where a parent sets up a chore once by photographing the room
 
 **Data model (six tables):** `families`; `users` (with `role` parent/child and `family_id`); `chores` (`type`, `criteria` for future rubric mode); `chore_references` (`is_current` flag for versioned references); `submissions` (with `exif` jsonb, `family_id` denormalized); `verdicts` (`result`, `status`, `confidence`, `deviations`, `model`). Streaks are computed over the event stream, not stored.
 
-**Accounts:** Children have their own logins, parent-provisioned (no child self-registration), tied to the parent via shared `family_id`. Row-level security scopes parents to their `family_id` and children to their own records.
+**Accounts:** Children have their own logins, parent-provisioned (no child self-registration), tied to the parent via shared `family_id`. Row-level security scopes parents to their `family_id` and children to their own records. *Status: the `families`/`users` tables, the `family_id` foreign keys on every data table, and the per-family RLS policies are built (family-level isolation — User Story 17). Supabase Auth, the login/provisioning UI, and child-record-level scoping (a child seeing only their own submissions) are staged for the auth slice; the policies are present but dormant while the server uses the service-role key, which bypasses RLS — per-family scoping is enforced in the adapters meanwhile, so the app still runs as a single seeded family.*
 
 **Modules:**
 
@@ -85,6 +85,6 @@ Verifiable parental consent and vendor data-retention/training terms must be val
 
 ## Further Notes
 
-The architecture is deliberately built so the deferred features slot in without rework: rich event storage feeds future gamification, `family_id` on every row enables multi-tenancy, the `judgeImage` abstraction enables model titration, and status/criteria/exif seams support disputes, rubrics, and anti-gaming respectively.
+The architecture is deliberately built so the deferred features slot in without rework: rich event storage feeds future gamification, `family_id` on every row is now a real per-family foreign key behind dormant RLS policies (multi-tenancy ready the moment auth flips the runtime to an authenticated client), the `judgeImage` abstraction enables model titration, and status/criteria/exif seams support disputes, rubrics, and anti-gaming respectively.
 
 Two compliance items are pre-conditions for a real launch, not the MVP: COPPA-grade parental consent (the parent-provisioned account flow is a structural head start) and confirmation of the chosen vision vendor's data-handling terms for children's images.

@@ -76,7 +76,13 @@ function mapVerdict(row: VerdictRow): VerdictRecord {
 }
 
 export class SupabaseSubmissionStore implements SubmissionStore {
-  constructor(private readonly ctx: SupabaseContext) {}
+  // `familyId` is bound at construction (like `ctx`); stamped on both writes and
+  // used to filter every read, so the port stays unchanged and tenancy holds under
+  // the service-role key (which bypasses RLS). See `SupabaseChoreStore`.
+  constructor(
+    private readonly ctx: SupabaseContext,
+    private readonly familyId: string,
+  ) {}
 
   async addSubmission(draft: SubmissionDraft): Promise<SubmissionRecord> {
     // Pre-generate the id so the Storage object path matches the row id.
@@ -92,6 +98,7 @@ export class SupabaseSubmissionStore implements SubmissionStore {
         storage_path: path,
         mime_type: draft.image.mimeType,
         exif: draft.exif,
+        family_id: this.familyId,
       })
       .select()
       .single();
@@ -115,6 +122,7 @@ export class SupabaseSubmissionStore implements SubmissionStore {
         notes: draft.notes,
         model: draft.model,
         judgment: draft.judgment,
+        family_id: this.familyId,
       })
       .select()
       .single();
@@ -125,7 +133,7 @@ export class SupabaseSubmissionStore implements SubmissionStore {
   }
 
   async listSubmissions(choreId?: string): Promise<SubmissionRecord[]> {
-    const base = this.ctx.client.from('submissions').select('*');
+    const base = this.ctx.client.from('submissions').select('*').eq('family_id', this.familyId);
     const filtered = choreId === undefined ? base : base.eq('chore_id', choreId);
     const { data, error } = await filtered.order('created_at', { ascending: true });
     if (error) {
@@ -144,6 +152,7 @@ export class SupabaseSubmissionStore implements SubmissionStore {
       const { data, error } = await this.ctx.client
         .from('verdicts')
         .select('*')
+        .eq('family_id', this.familyId)
         .order('created_at', { ascending: true });
       if (error) {
         throw new Error(`Failed to list verdicts: ${error.message}`);
@@ -156,6 +165,7 @@ export class SupabaseSubmissionStore implements SubmissionStore {
       .from('verdicts')
       .select('*, submissions!inner(chore_id)')
       .eq('submissions.chore_id', choreId)
+      .eq('family_id', this.familyId)
       .order('created_at', { ascending: true });
     if (error) {
       throw new Error(`Failed to list verdicts for chore "${choreId}": ${error.message}`);
