@@ -18,3 +18,11 @@ npm run build  # production build (also the server/client boundary check)
 With no `GEMINI_API_KEY` set, the app uses a built-in **fake judge** (a scripted
 pass), so the whole flow runs locally with no key or network. Set `GEMINI_API_KEY`
 (see `.env.example`) to use the live Gemini vision model.
+
+Persistence works the same way: with no `SUPABASE_*` variables set, the app uses
+**in-memory stores** (which reset when the server restarts). To use the live
+Supabase backend, set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
+`SUPABASE_STORAGE_BUCKET` (see `.env.example`), run
+`supabase/migrations/0001_init.sql`, and create a **private** Storage bucket of
+that name. The two backends sit behind identical ports, so only the composition
+root (`lib/server/container.ts`) is aware of which one is active.
