@@ -3,10 +3,11 @@ import type { ImageInput, Verdict } from '../judge';
 /**
  * A child's chore submission. Maps onto the `submissions` table in PRD.md
  * (`exif` jsonb; `family_id` denormalized for RLS). `family_id` and child
- * accounts are out of scope for this single-family, accounts-deferred slice —
- * `childId` is an optional opaque key (like `choreId`), not validated until
- * `choreService`/accounts exist. `{ id, createdAt }` is structurally a
- * `StreakSubmission`, so a record feeds `computeStreak` with no field mapping.
+ * accounts are out of scope for this single-family, accounts-deferred slice.
+ * `choreId` existence is now checkable via `getChore` (the chore module; wiring
+ * it in is the next step); `childId` stays an opaque key until accounts exist.
+ * `{ id, createdAt }` is structurally a `StreakSubmission`, so a record feeds
+ * `computeStreak` with no field mapping.
  */
 export interface SubmissionRecord {
   id: string;

@@ -20,11 +20,13 @@ behavior that contradicts the PRD, update the PRD in the same change.
 Early. Built so far: the **reference→verdict tracer bullet** (the core judging
 pipeline, end-to-end, behind clean seams), **`computeStreak`** (the pure v1
 streak policy), **`referenceService`** (versioned references behind an in-memory
-persistence seam), and **`submissionService`** (orchestrates a child's submission
-→ reference lookup → judge → persisted submission+verdict, over the same seam).
-Not yet built (see PRD): `choreService`, the Next.js PWA, the live Supabase
-(Postgres/Auth/Storage) adapters behind the persistence seams, camera capture,
-streak/history *UI*, and accounts.
+persistence seam), **`submissionService`** (orchestrates a child's submission
+→ reference lookup → judge → persisted submission+verdict, over the same seam),
+and **`choreService`** (parent-side chore creation behind the same in-memory
+persistence seam; the thin entry point for the multi-chore future). **All six
+PRD domain modules are now built.** Not yet built (see PRD): the Next.js PWA, the
+live Supabase (Postgres/Auth/Storage) adapters behind the persistence seams,
+camera capture, streak/history *UI*, and accounts.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -114,8 +116,9 @@ dedup — a re-upload is a deliberate, history-worthy act). The live
 `SupabaseReferenceStore` is **deferred** and, like `gemini.ts`, stays **out of
 `index.ts`**: it will keep bytes in Supabase Storage + a path on the row, and
 make demote+insert atomic with a transaction and a partial unique index
-(`WHERE is_current`). `choreId` is an opaque key here — chore existence isn't
-validated until `choreService` exists.
+(`WHERE is_current`). `choreId` is an opaque key here; `getChore` (the chore
+seam) now provides existence validation, and wiring it into `setReference` is
+the next integration step.
 
 ## The submission seam (`src/submission/`)
 
@@ -143,8 +146,36 @@ an unverdicted submission as a transparent non-event. `submitChore` is **not
 transactional in this slice**; making the pair atomic is a deferred
 `SupabaseSubmissionStore` concern, like `ReferenceStore`'s demote+insert. That
 live adapter — bytes→Storage, EXIF→jsonb, `family_id` for RLS — stays **out of
-`index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `childId`/`choreId` are
-opaque keys until `choreService`/accounts exist.
+`index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `choreId` existence is
+now checkable via `getChore` (the chore seam; wiring it in is the next step),
+while `childId` stays opaque until accounts exist.
+
+## The chore seam (`src/chore/`)
+
+`choreService` owns parent-side **chore creation/management** (PRD User Story 3;
+lines 45–46) over a dumb `ChoreStore` port — the sibling of `ReferenceStore`/
+`SubmissionStore`. It is deliberately **thin** (v1 has a single chore, "Tidy
+room") but is the entry point for the multi-chore future. The *system* owns the
+only policy — name normalization — not the store, the same way `referenceService`
+owns the `isCurrent` invariant.
+
+| File | Responsibility |
+| --- | --- |
+| `types.ts` | `Chore`, `ChoreDraft`, and the `ChoreStore` port (the future-Supabase seam). |
+| `errors.ts` | `ChoreNotFoundError` — thrown by `getChore` when a `choreId` doesn't resolve (sibling of `NoCurrentReferenceError`). |
+| `choreService.ts` | `createChore` / `getChore` / `listChores` — free functions taking the store first (like `setReference`). `createChore` trims and rejects an empty name; **no uniqueness/dedup** (mirroring `referenceService`). |
+| `memoryStore.ts` | `InMemoryChoreStore`, the fully-working fake (sibling of `InMemoryReferenceStore`) — one insertion-ordered array, injectable id/clock, copy-on-read. |
+
+A chore's `name` is the source of the `choreName` string that `submitChore`
+threads into `runJudgment`'s prompt, so it is normalized once here at the write
+boundary. `chores.type`/`criteria` (a future rubric mode) and `family_id` (RLS)
+are **deferred schema seams**: like reference/submission, the in-memory `Chore`
+models only what v1 reads. The live `SupabaseChoreStore` (a future
+`./supabaseStore`) is **deferred** and stays **out of `index.ts`**, like
+`gemini.ts`/`SupabaseReferenceStore`/`SupabaseSubmissionStore`. `getChore` is the
+public "assert a chore exists" API; **wiring it into reference/submission to
+replace their opaque-`choreId` treatment is the natural next integration** (not
+done in this slice — it would change `setReference`/`submitChore` signatures).
 
 ## Commands
 
@@ -171,7 +202,9 @@ Test external behavior (inputs→outputs), not internals, so tests survive
 refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths),
 `computeStreak` (crafted event sequences: streaks, breaks, gaps),
 `referenceService` (the `isCurrent` invariant, behaviorally, over
-`InMemoryReferenceStore`), and `parseModelJudgment` (contract enforcement). The
+`InMemoryReferenceStore`), `choreService` (name policy + the `getChore`
+existence assertion + copy-on-read, over `InMemoryChoreStore`), and
+`parseModelJudgment` (contract enforcement). The
 model's actual visual judgment is non-deterministic and belongs in eval-style
 testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
 without a live model.
