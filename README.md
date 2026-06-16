@@ -1,2 +1,20 @@
 # family-chore-tracker
-an app parents can use to check whether chores have been completed
+
+An app parents can use to check whether chores have been completed: a parent
+photographs a room in its tidy "done" state, a child later submits a photo, and
+the app compares the two and returns a structured pass/fail verdict. Parents get a
+history view; children get a streak. See `PRD.md` for the product spec and
+`CLAUDE.md` for the architecture.
+
+## Develop
+
+```bash
+npm install
+npm run dev    # the Next.js PWA at http://localhost:3000
+npm test       # unit tests for the domain core
+npm run build  # production build (also the server/client boundary check)
+```
+
+With no `GEMINI_API_KEY` set, the app uses a built-in **fake judge** (a scripted
+pass), so the whole flow runs locally with no key or network. Set `GEMINI_API_KEY`
+(see `.env.example`) to use the live Gemini vision model.

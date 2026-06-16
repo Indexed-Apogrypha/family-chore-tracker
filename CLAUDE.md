@@ -23,10 +23,13 @@ streak policy), **`referenceService`** (versioned references behind an in-memory
 persistence seam), **`submissionService`** (orchestrates a child's submission
 → reference lookup → judge → persisted submission+verdict, over the same seam),
 and **`choreService`** (parent-side chore creation behind the same in-memory
-persistence seam; the thin entry point for the multi-chore future). **All six
-PRD domain modules are now built.** Not yet built (see PRD): the Next.js PWA, the
-live Supabase (Postgres/Auth/Storage) adapters behind the persistence seams,
-camera capture, streak/history *UI*, and accounts.
+persistence seam; the thin entry point for the multi-chore future) — **all six
+PRD domain modules** — plus the **first Next.js PWA slice** (App Router + React
+Server Components + Server Actions; a thin in-browser tracer over the domain core
+with camera capture, the verdict view, a streak badge, and a parent history list
+— see "The PWA" below). Not yet built (see PRD): the live Supabase
+(Postgres/Auth/Storage) adapters behind the persistence seams, an offline service
+worker, and accounts/auth.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -177,12 +180,51 @@ public "assert a chore exists" API; **wiring it into reference/submission to
 replace their opaque-`choreId` treatment is the natural next integration** (not
 done in this slice — it would change `setReference`/`submitChore` signatures).
 
+## The PWA (`app/`, `lib/server/`)
+
+The first product surface: a mobile-first Next.js **App Router** PWA that drives
+the finished domain core through a real browser (PRD: "Next.js PWA … `<input
+capture>`"). A thin **tracer bullet** — a parent sets/replaces the reference
+photo, a child captures + submits, the AI verdict renders, and a streak badge +
+parent history list read back. The domain core and the Gemini SDK stay
+**server-only**: every domain call runs in a Server Component or a Server Action,
+and `lib/server/container.ts` opens with `import 'server-only'` so an accidental
+client import is a build error. Client components import the core's **types only**.
+
+| File | Responsibility |
+| --- | --- |
+| `lib/server/container.ts` | The composition root — owns the three in-memory stores (on `globalThis` to survive dev HMR), seeds the single "Tidy room" chore, and exposes `getStores` / `getSeededChore` / `buildSubmitDeps` / `getStreakState`. **The only place wired to a concrete persistence + judge implementation.** |
+| `app/actions.ts` | `setReferenceAction` / `submitChoreAction` (`'use server'`) — read the `<input capture>` file from FormData, convert to the core's `ImageInput` (base64, no `data:` prefix), and call `setReference` / `submitChore`. Map `NoCurrentReferenceError` to a friendly signal; return only serializable data. |
+| `app/{page,parent/page,child/page,parent/history/page}.tsx` | Server Components reading the container directly. Marked `dynamic = 'force-dynamic'` (live per-request state, not a build-time snapshot). |
+| `app/components/*` | `ReferenceForm` / `SubmitForm` (`'use client'`, the camera `<input>` + `useActionState`), and presentational `VerdictCard` / `StreakBadge` / `PhotoThumb` / `Nav`. |
+| `app/manifest.ts` | The web app manifest (installable PWA); no service worker yet. |
+
+**Two deliberate bridges, each swapped behind an existing seam later with no
+caller changes:**
+
+1. **Persistence is in-memory** — `InMemory*Store` singletons on `globalThis`,
+   seeded once. It resets on a full server restart (acceptable for the tracer).
+   The deferred `Supabase*Store` adapters drop in behind the identical
+   `ChoreStore` / `ReferenceStore` / `SubmissionStore` ports; **only
+   `container.ts` changes.**
+2. **The judge is env-gated** in `container.ts`: the live `GeminiJudgeClient`
+   (dynamic `import`, so `@google/genai` only loads when keyed) when
+   `GEMINI_API_KEY` is set, otherwise `FakeJudgeClient(CLEAN_PASS)` — so the app
+   runs with no key here and in CI.
+
+Accounts/auth stay deferred (single implicit family; `childId` omitted). The
+large-photo body cap (`serverActions.bodySizeLimit` in `next.config.mjs`) is a
+stopgap until direct-to-Storage upload removes large bodies from the action path.
+
 ## Commands
 
 ```bash
 npm install
+npm run dev       # the Next.js PWA at http://localhost:3000 (fake judge unless keyed)
+npm run build     # next build — also the server/client boundary check (CI runs it)
+npm start         # serve the production build
 npm test          # vitest — unit tests for policy, parsing, and the pipeline
-npm run typecheck  # tsc --noEmit
+npm run typecheck # tsc for the core (tsconfig.core.json) AND the app (tsconfig.json)
 npm run demo      # runs the tracer bullet end-to-end with the fake judge
 # Live path (needs a key): cp .env.example .env, set GEMINI_API_KEY, then:
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
@@ -193,6 +235,11 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 - TypeScript, ESM (`"type": "module"`), strict mode incl.
   `noUncheckedIndexedAccess` and `verbatimModuleSyntax` (use `import type` for
   type-only imports).
+- Two TS projects: **`tsconfig.core.json`** owns the DOM-free `src/` core (with
+  `verbatimModuleSyntax`); **`tsconfig.json`** owns the app (`app/` + `lib/`, with
+  DOM/JSX/`isolatedModules`, and `src` excluded, so it relaxes
+  `verbatimModuleSyntax`). `npm run typecheck` runs both — keeping DOM out of the
+  core build is a real guarantee, so don't merge them into one config.
 - The default vision model is **Gemini Flash-class** (`gemini-2.5-flash`),
   configurable via `GEMINI_MODEL`. Per the PRD it is deliberately swappable.
 
@@ -223,3 +270,9 @@ This app judges photos of minors' rooms. Two compliance items are pre-conditions
 for a real launch (not the MVP, but never silently cross them): COPPA-grade
 parental consent, and confirmation of the vision vendor's data-handling/training
 terms for children's images. Capture EXIF but don't build anti-gaming yet.
+
+The PWA keeps this posture: keyless (the default here and in CI), the fake judge
+ignores the photo bytes, so nothing leaves the box; the moment `GEMINI_API_KEY` is
+set, real photos go to Gemini, so both pre-conditions gate any keyed deployment.
+The submission path records EXIF as `null` for now (a browser `<input capture>`
+upload needs a parser to surface it); anti-gaming stays unbuilt.
