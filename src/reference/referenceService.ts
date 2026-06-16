@@ -12,7 +12,8 @@ import type { ChoreReference, ReferenceStore } from './types';
  * Every call creates a new version even when the bytes match a prior one (no
  * dedup): a parent re-uploading is a deliberate, history-worthy act, and
  * collapsing it would lose a timestamped version. `choreId` is treated as an
- * opaque key — chore existence is not validated in this slice.
+ * opaque key here; `getChore` (the chore module) now provides that existence
+ * check, and wiring it into `setReference` is the next integration step.
  *
  * The read→demote→insert sequence is the correct serial logic; making it atomic
  * under concurrent callers is a `SupabaseReferenceStore` concern (transaction +
