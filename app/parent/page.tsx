@@ -2,10 +2,12 @@ import { ReferenceForm } from '../components/ReferenceForm';
 import { PhotoThumb } from '../components/PhotoThumb';
 import { getStores, getSeededChore } from '../../lib/server/container';
 import { getCurrentReference } from '../../src/reference';
+import { authMode, requireParent } from '../../lib/server/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ParentPage() {
+  if (authMode()) await requireParent();
   const { references } = await getStores();
   const { choreId, choreName } = await getSeededChore();
   const current = await getCurrentReference(references, choreId);

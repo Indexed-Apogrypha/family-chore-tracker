@@ -32,13 +32,13 @@ A mobile-first PWA where a parent sets up a chore once by photographing the room
 
 ## Implementation Decisions
 
-**Scope (v1):** Single family, one chore type ("Tidy room"), reference-photo comparison only, structured JSON verdict, basic streak, simple parent history view.
+**Scope (v1):** one chore type ("Tidy room"), reference-photo comparison only, structured JSON verdict, basic streak, simple parent history view. Accounts — families/users, Supabase Auth, the parent-provisioned child flow, and per-family + per-child RLS — are now built (the single-family MVP has grown into real per-family multi-tenancy), env-gated so the app still runs single-family with no login when unconfigured.
 
 **Stack:** Next.js PWA (using `<input capture>` for native camera); Supabase for Postgres, Auth, and Storage; a Gemini Flash-class vision model for v1. Native Expo client deferred to v2, reusing the same API and data layer.
 
 **Data model (six tables):** `families`; `users` (with `role` parent/child and `family_id`); `chores` (`type`, `criteria` for future rubric mode); `chore_references` (`is_current` flag for versioned references); `submissions` (with `exif` jsonb, `family_id` denormalized); `verdicts` (`result`, `status`, `confidence`, `deviations`, `model`). Streaks are computed over the event stream, not stored.
 
-**Accounts:** Children have their own logins, parent-provisioned (no child self-registration), tied to the parent via shared `family_id`. Row-level security scopes parents to their `family_id` and children to their own records.
+**Accounts:** Children have their own logins, parent-provisioned (no child self-registration), tied to the parent via shared `family_id`. Row-level security scopes parents to their `family_id` and children to their own records. *Status: built. The `families`/`users` tables, the `family_id` foreign keys, Supabase Auth (email/password parents; parent-provisioned, username-based children), login/sign-up/sign-out + the child-provisioning UI, PWA role gating, and per-family + per-child RLS policies are all in place. User-facing reads/writes now run through an authenticated (anon-key + user-JWT) client, so the RLS policies enforce (User Story 17 + child-record scoping); the service-role key is retained only for privileged provisioning and Storage. All of it is env-gated: with no `SUPABASE_ANON_KEY` the app falls back to the legacy single-implicit-family, no-login mode (the keyless default + CI). The live auth flow needs a Supabase project and is not runtime-verified in this environment — typecheck + keyless build + tests only.*
 
 **Modules:**
 
@@ -79,12 +79,12 @@ Good tests verify external behavior (inputs -> outputs), not internal implementa
 
 ## Out of Scope
 
-Multiple chore types; multiple children or families beyond the single-family MVP; full gamification (badges, points, rewards); anti-gaming defenses (though EXIF is captured); notifications; dispute/review resolution (though a verdict `status` seam exists); rubric-based judgment without a reference (though the `chores.type`/`criteria` seam exists); native mobile app (v2).
+Multiple chore types; full gamification (badges, points, rewards); anti-gaming defenses (though EXIF is captured); notifications; dispute/review resolution (though a verdict `status` seam exists); rubric-based judgment without a reference (though the `chores.type`/`criteria` seam exists); native mobile app (v2). (Multiple children and families — once out of scope for the single-family MVP — are now supported by the accounts slice.)
 
 Verifiable parental consent and vendor data-retention/training terms must be validated before onboarding real minors — flagged, not built, in v1.
 
 ## Further Notes
 
-The architecture is deliberately built so the deferred features slot in without rework: rich event storage feeds future gamification, `family_id` on every row enables multi-tenancy, the `judgeImage` abstraction enables model titration, and status/criteria/exif seams support disputes, rubrics, and anti-gaming respectively.
+The architecture is deliberately built so the deferred features slot in without rework: rich event storage feeds future gamification, `family_id` on every row is a real per-family foreign key enforced by per-family RLS now that auth runs user-facing queries through an authenticated client, the `judgeImage` abstraction enables model titration, and status/criteria/exif seams support disputes, rubrics, and anti-gaming respectively.
 
-Two compliance items are pre-conditions for a real launch, not the MVP: COPPA-grade parental consent (the parent-provisioned account flow is a structural head start) and confirmation of the chosen vision vendor's data-handling terms for children's images.
+Two compliance items are pre-conditions for a real launch, not the MVP: COPPA-grade parental consent (the parent-provisioned account flow, now built, is a structural head start) and confirmation of the chosen vision vendor's data-handling terms for children's images.

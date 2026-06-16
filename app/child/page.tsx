@@ -1,10 +1,12 @@
 import { SubmitForm } from '../components/SubmitForm';
 import { StreakBadge } from '../components/StreakBadge';
 import { getStreakState, getSeededChore } from '../../lib/server/container';
+import { authMode, requireChild } from '../../lib/server/auth';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ChildPage() {
+  if (authMode()) await requireChild();
   const [streak, { choreName }] = await Promise.all([getStreakState(), getSeededChore()]);
 
   return (

@@ -22,12 +22,19 @@ function mapChore(row: ChoreRow): Chore {
 }
 
 export class SupabaseChoreStore implements ChoreStore {
-  constructor(private readonly ctx: SupabaseContext) {}
+  // `familyId` is bound at construction (the container supplies the seeded
+  // family), like `ctx`. The store stamps it on every write and filters every
+  // read by it, so the dumb-CRUD port stays unchanged and tenancy is enforced in
+  // the adapter even under the service-role key (which bypasses RLS).
+  constructor(
+    private readonly ctx: SupabaseContext,
+    private readonly familyId: string,
+  ) {}
 
   async add(draft: ChoreDraft): Promise<Chore> {
     const { data, error } = await this.ctx.client
       .from('chores')
-      .insert({ name: draft.name })
+      .insert({ name: draft.name, family_id: this.familyId })
       .select()
       .single();
     if (error || !data) {
@@ -41,6 +48,7 @@ export class SupabaseChoreStore implements ChoreStore {
       .from('chores')
       .select('*')
       .eq('id', id)
+      .eq('family_id', this.familyId)
       .maybeSingle();
     if (error) {
       throw new Error(`Failed to load chore "${id}": ${error.message}`);
@@ -52,6 +60,7 @@ export class SupabaseChoreStore implements ChoreStore {
     const { data, error } = await this.ctx.client
       .from('chores')
       .select('*')
+      .eq('family_id', this.familyId)
       .order('created_at', { ascending: true });
     if (error) {
       throw new Error(`Failed to list chores: ${error.message}`);

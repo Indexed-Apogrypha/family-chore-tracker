@@ -39,13 +39,20 @@ function mapReference(row: ReferenceRow, image: ImageInput): ChoreReference {
 }
 
 export class SupabaseReferenceStore implements ReferenceStore {
-  constructor(private readonly ctx: SupabaseContext) {}
+  // `familyId` is bound at construction (like `ctx`); stamped on writes and used
+  // to filter reads, so the port stays unchanged and tenancy holds under the
+  // service-role key (which bypasses RLS). See `SupabaseChoreStore`.
+  constructor(
+    private readonly ctx: SupabaseContext,
+    private readonly familyId: string,
+  ) {}
 
   async listByChore(choreId: string): Promise<ChoreReference[]> {
     const { data, error } = await this.ctx.client
       .from('chore_references')
       .select('*')
       .eq('chore_id', choreId)
+      .eq('family_id', this.familyId)
       .order('created_at', { ascending: true });
     if (error) {
       throw new Error(`Failed to list references for chore "${choreId}": ${error.message}`);
@@ -69,6 +76,7 @@ export class SupabaseReferenceStore implements ReferenceStore {
       p_chore_id: draft.choreId,
       p_storage_path: path,
       p_mime_type: draft.image.mimeType,
+      p_family_id: this.familyId,
     });
     // A composite-returning function yields a single object, but tolerate a
     // single-element array shape too.
@@ -86,7 +94,8 @@ export class SupabaseReferenceStore implements ReferenceStore {
     const { error } = await this.ctx.client
       .from('chore_references')
       .update({ is_current: isCurrent })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('family_id', this.familyId);
     if (error) {
       throw new Error(`Failed to set is_current on reference "${id}": ${error.message}`);
     }
