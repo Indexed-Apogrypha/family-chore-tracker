@@ -44,8 +44,10 @@ interface VerdictRow {
   created_at: string;
 }
 
-function submissionPath(choreId: string, id: string): string {
-  return `submissions/${choreId}/${id}`;
+// The leading `${familyId}` segment is the per-family RLS scope key: the 0004
+// Storage policies gate objects on `(storage.foldername(name))[1]`.
+function submissionPath(familyId: string, choreId: string, id: string): string {
+  return `${familyId}/submissions/${choreId}/${id}`;
 }
 
 function mapSubmission(row: SubmissionRow, image: ImageInput): SubmissionRecord {
@@ -87,7 +89,7 @@ export class SupabaseSubmissionStore implements SubmissionStore {
   async addSubmission(draft: SubmissionDraft): Promise<SubmissionRecord> {
     // Pre-generate the id so the Storage object path matches the row id.
     const id = randomUUID();
-    const path = submissionPath(draft.choreId, id);
+    const path = submissionPath(this.familyId, draft.choreId, id);
     await uploadImage(this.ctx, path, draft.image);
     const { data, error } = await this.ctx.client
       .from('submissions')

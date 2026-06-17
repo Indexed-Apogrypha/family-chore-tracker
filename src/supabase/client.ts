@@ -27,21 +27,13 @@ export interface SupabaseStoreOptions {
 
 /** A constructed client plus the bucket name, shared by the three adapters. */
 export interface SupabaseContext {
-  /** The client used for table (DB) I/O. Service-role here, or — once the app
-   *  flips on Auth — a per-request authenticated (anon-key + user-JWT) client, so
-   *  the per-family RLS policies actually enforce. The adapters can't tell which. */
+  /** The client used for BOTH table (DB) and Storage object I/O. Service-role here,
+   *  or — once the app flips on Auth — a per-request authenticated (anon-key +
+   *  user-JWT) client, so the per-family RLS policies enforce on rows AND, via the
+   *  0004 policies + family-prefixed object paths, on the photo bytes too. The
+   *  adapters can't tell which. */
   client: SupabaseClient;
   bucket: string;
-  /**
-   * Optional separate client for Storage object I/O; defaults to `client`. Under
-   * the authenticated-client flip the DB `client` respects RLS, but photo bytes
-   * still go through the service-role client here: the private bucket has no
-   * per-family object policies yet (paths aren't family-prefixed), and an object
-   * path is only discoverable via a family-scoped DB row, so this is a documented
-   * v1 compromise, not a hole. A future slice adds family-prefixed paths + Storage
-   * RLS and drops this back to `client`.
-   */
-  storageClient?: SupabaseClient;
 }
 
 export function createSupabaseContext(opts: SupabaseStoreOptions = {}): SupabaseContext {

@@ -24,8 +24,10 @@ interface ReferenceRow {
   created_at: string;
 }
 
-function referencePath(choreId: string, id: string): string {
-  return `references/${choreId}/${id}`;
+// The leading `${familyId}` segment is the per-family RLS scope key: the 0004
+// Storage policies gate objects on `(storage.foldername(name))[1]`.
+function referencePath(familyId: string, choreId: string, id: string): string {
+  return `${familyId}/references/${choreId}/${id}`;
 }
 
 function mapReference(row: ReferenceRow, image: ImageInput): ChoreReference {
@@ -69,7 +71,7 @@ export class SupabaseReferenceStore implements ReferenceStore {
   async add(draft: ReferenceDraft): Promise<ChoreReference> {
     // Pre-generate the id so the Storage object path matches the row id.
     const id = randomUUID();
-    const path = referencePath(draft.choreId, id);
+    const path = referencePath(this.familyId, draft.choreId, id);
     await uploadImage(this.ctx, path, draft.image);
     const { data, error } = await this.ctx.client.rpc('set_current_reference', {
       p_id: id,
