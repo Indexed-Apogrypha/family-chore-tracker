@@ -29,9 +29,11 @@ Server Components + Server Actions; a thin in-browser tracer over the domain cor
 with camera capture, the verdict view, a streak badge, and a parent history list
 — see "The PWA" below). Also built: the **live Supabase adapters**
 (`Supabase{Chore,Reference,Submission}Store`) behind the three persistence ports —
-Postgres + Storage, env-gated, with a SQL migration — scaffolded behind the seam
-and verified by `npm run typecheck` + the keyless `npm run build`, not yet against
-a live project (see "The Supabase adapters" below). Also built: the **accounts
+Postgres + Storage, env-gated, with a SQL migration — scaffolded behind the seam,
+verified by `npm run typecheck` + the keyless `npm run build`, and **now also by a
+live service-role round-trip** (`npm run smoke:supabase` against a real project — see
+"The Supabase adapters" + "The live smoke" below; auth-mode/RLS enforcement is the
+remaining live gap). Also built: the **accounts
 data-model + RLS foundation** — the `families`/`users` tables, real `family_id`
 foreign keys, family-aware adapters, and per-family **RLS policies** (migration
 `0002_accounts.sql`). And now the **full accounts + Auth layer** (migration
@@ -217,11 +219,17 @@ The live persistence layer behind the three ports — the persistence-side analo
 of `judge/gemini.ts`. Each adapter implements its frozen port verbatim and stays
 **out of its module's `index.ts`**, so importing a core never pulls in
 `@supabase/supabase-js`; the SDK is confined to `src/supabase/` + the three
-`supabaseStore.ts` files. **Scaffold & defer:** verified by `npm run typecheck` +
-the keyless `npm run build` (and the unchanged in-memory tests), **not** yet
-against a live project — the same posture as `gemini.ts` (keyless in CI). There
-are no adapter unit tests (the in-memory fakes stay the tested path); a live,
-env-gated integration test is the follow-up once credentials exist.
+`supabaseStore.ts` files. Verified by `npm run typecheck` + the keyless
+`npm run build` (and the unchanged in-memory tests) and now also by a **live
+service-role round-trip** against a real project (see "The live smoke" below) —
+the three adapters drive Postgres + Storage end-to-end and every invariant
+(family-stamping, the `isCurrent` demote+insert, family-prefixed object paths)
+cross-checks. There are no adapter *unit* tests (the in-memory fakes stay the
+tested path); the live smoke (`npm run smoke:supabase`) is the env-gated
+integration check. **Still deferred:** auth-mode / RLS *enforcement* is not yet
+runtime-verified — the smoke runs in service-role mode, which BYPASSES RLS, so the
+per-family/per-child policies stay exercised only structurally, not under a real
+authenticated JWT.
 
 | File | Responsibility |
 | --- | --- |
@@ -233,6 +241,7 @@ env-gated integration test is the follow-up once credentials exist.
 | `supabase/migrations/0002_accounts.sql` | The accounts foundation: the `families`/`users` tables, real `family_id` FKs on the four data tables, the `private.auth_family_id()` `SECURITY DEFINER` helper (the RLS-recursion breaker), the `set_current_reference` re-create with `p_family_id`, and the per-family **RLS policies**. |
 | `supabase/migrations/0003_auth.sql` | The auth activations: `users.username` (a child's login handle), the `private.auth_role()` helper, and **child-record-level RLS** — submissions/verdicts tighten so a child sees/inserts only their own rows while a parent sees the whole family. |
 | `supabase/migrations/0004_storage_rls.sql` | **Storage object RLS:** per-family `select`/`insert` policies on `storage.objects`, keyed on the family-prefixed object path (`(storage.foldername(name))[1]` = `private.auth_family_id()`), so the photo **bytes** get the per-family isolation the rows already have (US17). |
+| `supabase/migrations/0005_harden_function_search_path.sql` | Hardening from the live smoke's security advisor: re-creates `set_current_reference` with a pinned `set search_path = ''` + schema-qualified names (lint `0011_function_search_path_mutable`), and drops the orphaned pre-`family_id` 4-arg overload. Behavior unchanged. |
 
 **Env-gated in `container.ts`:** all three stores switch **together** to Supabase
 when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (dynamic import keeps the
@@ -258,8 +267,33 @@ photo bytes are now written under a **family-prefixed** object path and Storage 
 rides the authenticated client, so the per-family RLS guards the bytes too, not just
 the rows (US17) — `SupabaseContext` no longer carries the service-role `storageClient`
 escape hatch. **Still deferred:** `family_id` `NOT NULL` + backfill; the Storage bucket
-itself (a manual prerequisite the migration does not create); and an env-gated live
-integration test.
+itself (a manual prerequisite the migration does not create); and a live verification
+of auth-mode / RLS *enforcement* (the service-role smoke proves the adapter round-trip
+but bypasses RLS).
+
+## The live smoke (`scripts/supabase-smoke.ts`)
+
+The long-deferred env-gated integration check, **now run green** against the live
+`family-chore-tracker` project. `npm run smoke:supabase` wires the three live
+adapters the way `container.buildStores()` does in service-role mode (the container
+is `import 'server-only'` and can't be imported from a plain `tsx` script) and drives
+the full loop: seed family → seed chore → `setReference` → `submitChore` (env-gated
+judge) → `getHistory` → `computeStreak`, reading every step back through Storage +
+Postgres. Guarded on `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` (+
+`SUPABASE_STORAGE_BUCKET`), auto-loads `.env`, and uses the live Gemini judge when
+`GEMINI_API_KEY` is set, else the deterministic fake — the same rule `container.ts`
+uses. Runs are **additive** (no dedup) — each adds a reference version + a
+submission, by design, which is exactly what makes re-runs exercise the
+`set_current_reference` demote+insert.
+
+**Verified live (service-role mode, fake judge):** the adapter round-trip succeeds and
+an independent MCP cross-check confirms every invariant — `family_id` stamped on every
+row, family-prefixed Storage object paths (`<family_id>/{references,submissions}/…`),
+EXIF→jsonb, the submission→verdict FK join, and the `isCurrent` invariant (exactly one
+current reference after repeated `setReference`s). The smoke's security advisor flagged
+one item (`set_current_reference`'s mutable `search_path`), fixed in `0005` and re-run
+clean. **Not covered by the smoke:** auth-mode + RLS enforcement (service role bypasses
+RLS) and the live Gemini judge (the smoke ran keyless).
 
 ## The auth layer (`lib/server/auth.ts`, `proxy.ts`, `app/auth/`, `app/login/`)
 
@@ -354,11 +388,13 @@ npm start         # serve the production build
 npm test          # vitest — unit tests for policy, parsing, and the pipeline
 npm run typecheck # tsc for the core (tsconfig.core.json) AND the app (tsconfig.json)
 npm run demo      # runs the tracer bullet end-to-end with the fake judge
+npm run smoke:supabase  # live service-role round-trip of the 3 adapters (needs SUPABASE_* in .env)
 # Live path (needs a key): cp .env.example .env, set GEMINI_API_KEY, then:
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
 # SUPABASE_STORAGE_BUCKET, run the migrations in order (0001_init.sql, 0002_accounts.sql,
-# 0003_auth.sql, 0004_storage_rls.sql), create a private Storage bucket. Unset → in-memory.
+# 0003_auth.sql, 0004_storage_rls.sql, 0005_harden_function_search_path.sql), create a
+# private Storage bucket, then `npm run smoke:supabase` to verify the round-trip. Unset → in-memory.
 # Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
 # Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
 ```
@@ -388,10 +424,11 @@ existence assertion + copy-on-read, over `InMemoryChoreStore`), and
 model's actual visual judgment is non-deterministic and belongs in eval-style
 testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
 without a live model. The live `Supabase*Store` adapters likewise have **no unit
-tests** — like `gemini.ts`, they're exercised by an env-gated live integration
-test (deferred until credentials exist; it should also assert per-family stamping +
-filtering and, once auth lands, RLS isolation), and the in-memory fakes stay the
-tested persistence path.
+tests** — like `gemini.ts`, they're exercised by the env-gated live smoke
+(`npm run smoke:supabase`), which **now runs green** against a real project and
+asserts per-family stamping + filtering and the `isCurrent` invariant; RLS-isolation
+under a real authenticated JWT (once auth-mode is exercised live) is the remaining
+gap. The in-memory fakes stay the tested persistence path.
 
 `submissionService` gets a **light integration test** (PRD): compose
 `submitChore` with `FakeJudgeClient` + `InMemoryReferenceStore` (seeded via
