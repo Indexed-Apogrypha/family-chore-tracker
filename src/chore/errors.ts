@@ -2,8 +2,9 @@
  * Raised by `getChore` when no chore exists for the given id — the public
  * "assert this chore exists" failure, a precondition error and the sibling of
  * `NoCurrentReferenceError` in the submission module. This is the validation
- * hook the future reference/submission wiring will call before treating a
- * `choreId` as real (today both treat it as an opaque, unvalidated key).
+ * hook `setReference` and `submitChore` now call before treating a `choreId` as
+ * real, so neither versions a reference nor records a submission under a chore
+ * that doesn't exist.
  */
 export class ChoreNotFoundError extends Error {
   constructor(

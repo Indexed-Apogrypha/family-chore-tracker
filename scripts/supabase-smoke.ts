@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   // 1) Reference round-trip: bytes -> Storage (family-prefixed path), path -> row,
   //    atomic demote+insert via the set_current_reference RPC, materialise on read.
   const refImage = imageFrom(refPath, () => solidPng(16, [80, 160, 90]));
-  const reference = await setReference(references, chore.id, refImage);
+  const reference = await setReference({ references, chores }, chore.id, refImage);
   const current = await getCurrentReference(references, chore.id);
   assert(current && current.id === reference.id && current.isCurrent, 'current reference round-trips');
   assert(current.image.data.length > 0, 'reference bytes materialise back from Storage');
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   const { judge, name: judgeName } = await getJudge();
   console.log(`• judge:   ${judgeName}`);
   const subImage = imageFrom(subPath, () => solidPng(16, [80, 160, 90]));
-  const deps: SubmitChoreDeps = { judge, references, submissions };
+  const deps: SubmitChoreDeps = { judge, chores, references, submissions };
   try {
     const { submission, verdict } = await submitChore(deps, {
       choreId: chore.id,

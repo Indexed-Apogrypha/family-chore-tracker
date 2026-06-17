@@ -3,8 +3,8 @@
 // `createChore`/`getChore`/`listChores` are free functions over the dumb
 // `ChoreStore` seam; `InMemoryChoreStore` is the fully-working fake the rest of
 // the app and the tests run against. `getChore` is the "assert a choreId is real"
-// hook that reference/submission will wire in to replace their opaque-key
-// treatment.
+// hook that `setReference` and `submitChore` now call to validate the choreId
+// before writing under it.
 //
 // Note: the live Supabase adapter (a future `./supabaseStore`,
 // `SupabaseChoreStore`) is intentionally NOT re-exported here, so importing the

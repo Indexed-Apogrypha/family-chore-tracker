@@ -1,5 +1,17 @@
 import type { ImageInput } from '../judge/types';
+import { getChore, type ChoreStore } from '../chore';
 import type { ChoreReference, ReferenceStore } from './types';
+
+/**
+ * The two seams `setReference` spans: the `references` store it versions the
+ * reference in, and the `chores` store it validates the `choreId` against before
+ * writing. Mirrors `submitChore`'s `SubmitChoreDeps` — a deps object once a free
+ * function operates over more than one seam.
+ */
+export interface SetReferenceDeps {
+  references: ReferenceStore;
+  chores: ChoreStore;
+}
 
 /**
  * Sets a new current reference for a chore, versioning rather than replacing.
@@ -9,26 +21,31 @@ import type { ChoreReference, ReferenceStore } from './types';
  * dumb `ReferenceStore`, the persistence-side sibling of how `runJudgment` owns
  * policy over `JudgeClient`.
  *
+ * The `choreId` is no longer an opaque key: `getChore` validates it exists first,
+ * throwing `ChoreNotFoundError` BEFORE any write so a reference can never be
+ * versioned under a chore that doesn't exist. Reads (`getCurrentReference`/
+ * `listReferences`) stay validation-free — they're harmless and return empty for
+ * an unknown chore.
+ *
  * Every call creates a new version even when the bytes match a prior one (no
  * dedup): a parent re-uploading is a deliberate, history-worthy act, and
- * collapsing it would lose a timestamped version. `choreId` is treated as an
- * opaque key here; `getChore` (the chore module) now provides that existence
- * check, and wiring it into `setReference` is the next integration step.
+ * collapsing it would lose a timestamped version.
  *
  * The read→demote→insert sequence is the correct serial logic; making it atomic
  * under concurrent callers is a `SupabaseReferenceStore` concern (transaction +
  * partial unique index `WHERE is_current`), out of scope here.
  */
 export async function setReference(
-  store: ReferenceStore,
+  deps: SetReferenceDeps,
   choreId: string,
   image: ImageInput,
 ): Promise<ChoreReference> {
-  const existing = await store.listByChore(choreId);
+  await getChore(deps.chores, choreId); // throws ChoreNotFoundError if the chore is unreal
+  const existing = await deps.references.listByChore(choreId);
   for (const ref of existing) {
-    if (ref.isCurrent) await store.setCurrent(ref.id, false);
+    if (ref.isCurrent) await deps.references.setCurrent(ref.id, false);
   }
-  return store.add({ choreId, image });
+  return deps.references.add({ choreId, image });
 }
 
 /** The current reference for a chore, or `null` if it has none. */

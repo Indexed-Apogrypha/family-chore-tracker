@@ -1,11 +1,13 @@
 import { runJudgment, type ImageInput, type JudgeClient } from '../judge';
 import { getCurrentReference, type ReferenceStore } from '../reference';
+import { getChore, type ChoreStore } from '../chore';
 import { NoCurrentReferenceError } from './errors';
 import type { SubmissionRecord, SubmissionStore, VerdictRecord } from './types';
 
-/** The three seams `submitChore` composes — wired once at the composition root. */
+/** The four seams `submitChore` composes — wired once at the composition root. */
 export interface SubmitChoreDeps {
   judge: JudgeClient;
+  chores: ChoreStore;
   references: ReferenceStore;
   submissions: SubmissionStore;
 }
@@ -28,6 +30,9 @@ export interface SubmitChoreInput {
  * NOT re-implement the reference invariant or the verdict policy.
  *
  * Sequence & failure semantics (NOT transactional in this slice, by design):
+ *  0. `getChore`; if the `choreId` doesn't resolve → throw `ChoreNotFoundError`
+ *     BEFORE any write (the choreId is no longer an opaque key). Ordered ahead of
+ *     the reference check: a missing chore is the more fundamental precondition.
  *  1. `getCurrentReference`; if none → throw `NoCurrentReferenceError` BEFORE any
  *     write (the chore isn't set up — not the child's attempt to record).
  *  2. Persist the submission (image + EXIF) FIRST, so the attempt is durable and
@@ -44,6 +49,8 @@ export async function submitChore(
   deps: SubmitChoreDeps,
   input: SubmitChoreInput,
 ): Promise<{ submission: SubmissionRecord; verdict: VerdictRecord }> {
+  await getChore(deps.chores, input.choreId); // throws ChoreNotFoundError if the chore is unreal
+
   const reference = await getCurrentReference(deps.references, input.choreId);
   if (reference === null) throw new NoCurrentReferenceError(input.choreId);
 
