@@ -61,13 +61,18 @@ Story 17) — scaffold-&-defer like the other migrations (SQL review-only, not
 runtime-verified). Also built: the **offline service worker** (`public/sw.js` +
 `ServiceWorkerRegistrar` + the `/offline` fallback) — app-shell offline support
 (navigations fall back to a branded offline page; hashed static assets serve
-cache-first), deliberately **not** an offline submission queue (judging needs the
-network). Verified by the keyless `npm run build` + a `npm start` round-trip
+cache-first). Verified by the keyless `npm run build` + a `npm start` round-trip
 (`/sw.js` served no-store with the right MIME; `/offline` renders). Also built: the
 **`family_id` `NOT NULL` hardening** (migration `0006`) — the four data tables now
 enforce per-row tenancy in the schema, with a conditional legacy backfill; applied
-live + verified (the service-role smoke round-trips green against it). Not yet built
-(see PRD): an offline **submission queue** (queue + replay photo bytes).
+live + verified (the service-role smoke round-trips green against it). And now the
+**offline submission queue, Phase 1** (`lib/offline/` + the `/child` & `/offline`
+client UI; design in `docs/offline-queue.md`) — a child captures a room photo
+offline, it's queued in IndexedDB, and a foreground driver delivers it through the
+*unchanged* `submitChoreAction` once back online (verdict lands in history/streak on
+sync). The pure drain + in-memory store are unit-tested; the runtime offline path
+needs a device (Phase 2 seams — `capturedAt`/`clientId`/`status`, Background Sync —
+are recorded). See "The PWA". Not yet built: offline-queue **Phase 2**.
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -443,7 +448,9 @@ client import is a build error. Client components import the core's **types only
 | `app/manifest.ts` | The web app manifest (installable PWA), now paired with the offline service worker below. |
 | `public/sw.js` | The **offline service worker** (hand-written, dependency-free). GET + same-origin only: navigations are network-first with a fallback to the cached `/offline`; `/_next/static/*` is cache-first; a small shell allowlist is stale-while-revalidate; **everything else (Server Action POSTs, RSC/dynamic GETs) is never cached**, so no stale or cross-user authenticated response is served. Versioned cache (`chore-shell-v1`) with old-cache cleanup on activate. |
 | `app/components/ServiceWorkerRegistrar.tsx` | `'use client'`; registers `/sw.js` (`scope:'/'`, `updateViaCache:'none'`) on load, **production only** (a dev SW fights HMR). Mounted in `layout.tsx`. Renders nothing. |
-| `app/offline/page.tsx` | The branded offline fallback the SW serves for navigations — static, auth-free, no domain data (judging needs the network). `next.config.mjs` adds the `/sw.js` response headers (no-store + correct MIME + `Service-Worker-Allowed`). |
+| `app/offline/page.tsx` | The branded offline fallback the SW serves for navigations — static, auth-free, no domain data. Now also hosts `OfflineCapture` + `QueueStatus` so a child can capture offline from a cold-opened app. `next.config.mjs` adds the `/sw.js` response headers (no-store + correct MIME + `Service-Worker-Allowed`). |
+| `lib/offline/` | **Offline submission queue, Phase 1** (design: `docs/offline-queue.md`). A `QueueStore` port (`types.ts`) with an `InMemoryQueueStore` (tested) + an `IndexedDbQueueStore` (the browser edge — multi-MB photo Blobs; untested like `gemini.ts`), `drainQueue` (pure FIFO orchestration: deliver each → dequeue-on-confirm → stop on network failure; unit-tested), and a browser `client.ts` facade (enqueue/count/drain + a change event). **The domain core + `submitChoreAction` are unchanged** — the drain replays the *same* action, which resolves chore + child server-side. Phase 2 seams recorded: `capturedAt` (fair streak bucketing), `clientId` (idempotency), `status` (retry/backoff), Background Sync via a Route Handler. |
+| `app/components/{QueueStatus,OfflineCapture}.tsx` + `SubmitForm` | `'use client'`. `SubmitForm` queues the photo when `navigator.onLine` is false (else the action runs as usual); `OfflineCapture` is the cold-open capture form on `/offline`; `QueueStatus` (on `/child` + `/offline`) drains on load + each `online` event and `router.refresh()`es so synced verdicts/streak appear. |
 
 **Three deliberate bridges, each swapped behind its env with no caller changes:**
 
@@ -518,8 +525,11 @@ refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths
 `InMemoryReferenceStore`, **plus the `getChore` gate** — `ChoreNotFoundError` for
 an unreal chore, success for a seeded one; the invariant tests bind a permissive
 chore double so they stay focused on versioning), `choreService` (name policy +
-the `getChore` existence assertion + copy-on-read, over `InMemoryChoreStore`), and
-`parseModelJudgment` (contract enforcement). The
+the `getChore` existence assertion + copy-on-read, over `InMemoryChoreStore`),
+`parseModelJudgment` (contract enforcement), and the **offline queue** (`drainQueue`
+over `InMemoryQueueStore` + a fake submitter: FIFO delivery, dequeue-on-confirm,
+retain-and-stop on a network throw — the `IndexedDbQueueStore` is the untested
+browser edge). The
 model's actual visual judgment is non-deterministic and belongs in eval-style
 testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
 without a live model. The live `Supabase*Store` adapters likewise have **no unit
