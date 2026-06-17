@@ -1,18 +1,14 @@
 # Test sample photos
 
 Reference/submission room photos for exercising the judge during testing — a real
-"reference → submission" pair for the same room.
+"reference → submission" pair for the same room. Both images are present (PNG).
 
-> **Note:** these two files need to be added from the original screenshots. They were
-> shared in chat but the attachments weren't persisted to disk, so the bytes couldn't be
-> copied in automatically. Add them with the filenames below (any of `.jpg`/`.jpeg`/`.png`).
-
-## Expected files
+## Files
 
 | File | Role | What it shows |
 | --- | --- | --- |
-| `reference-tidy-room.jpg` | **reference** (accepted "done" state) | Bed neatly made with a folded throw, clear carpet, tidy cat tree, clear dresser top. Blue walls, white wardrobe + dresser, Harry Potter decor. |
-| `submission-messy-room.jpg` | **submission** (judge this one) | Same room, messy: laundry piled on the bed and couch, clothes and shoes on the floor, a laundry basket out, dresser and cat-tree surfaces cluttered. |
+| `tidy-room-sample.png` | **reference** (accepted "done" state) | Bed neatly made with a folded throw, clear carpet, tidy cat tree, clear dresser top. Blue walls, white wardrobe + dresser, Harry Potter decor. |
+| `messy-room-sample.png` | **submission** (judge this one) | Same room, messy: laundry piled on the bed and couch, clothes and shoes on the floor, a laundry basket out, dresser and cat-tree surfaces cluttered. |
 
 ## Expected verdict
 
@@ -29,11 +25,11 @@ With a vendor key set, run the end-to-end tracer against this pair:
 ```bash
 # Gemini
 GEMINI_API_KEY=... npm run demo -- \
-  samples/reference-tidy-room.jpg samples/submission-messy-room.jpg "Tidy room"
+  samples/tidy-room-sample.png samples/messy-room-sample.png "Tidy room"
 
 # Claude
 ANTHROPIC_API_KEY=... npm run demo -- \
-  samples/reference-tidy-room.jpg samples/submission-messy-room.jpg "Tidy room"
+  samples/tidy-room-sample.png samples/messy-room-sample.png "Tidy room"
 ```
 
 Keyless, the fake judge ignores the bytes and always returns `CLEAN_PASS`, so these
