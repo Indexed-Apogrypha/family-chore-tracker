@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { Nav } from './components/Nav';
+import { ServiceWorkerRegistrar } from './components/ServiceWorkerRegistrar';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <Nav />
         </header>
         <main className="app-main">{children}</main>
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );
