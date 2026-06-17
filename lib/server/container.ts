@@ -168,9 +168,11 @@ export async function buildSubmitDeps(): Promise<SubmitChoreDeps> {
 async function getJudge(): Promise<JudgeClient> {
   // Two live adapters behind the identical JudgeClient seam, each dynamically
   // imported so its vendor SDK only enters the server runtime when keyed.
-  // ANTHROPIC_API_KEY takes precedence — Claude is the compliance-preferred
-  // vendor for children's images (see docs/compliance.md).
-  if (process.env.ANTHROPIC_API_KEY) {
+  // Anthropic takes precedence — Claude is the compliance-preferred vendor for
+  // children's images (see docs/compliance.md). JUDGE_ANTHROPIC_API_KEY is the
+  // primary name (Claude Code on the web reserves plain ANTHROPIC_API_KEY for
+  // its own auth); ANTHROPIC_API_KEY is the local/CI fallback.
+  if (process.env.JUDGE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY) {
     const { AnthropicJudgeClient } = await import('../../src/judge/claude');
     return new AnthropicJudgeClient();
   }

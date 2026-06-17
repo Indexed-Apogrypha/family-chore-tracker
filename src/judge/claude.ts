@@ -19,7 +19,7 @@ const MAX_TOKENS = 1024;
 type ClaudeMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
 export interface AnthropicJudgeOptions {
-  /** API key. Defaults to process.env.ANTHROPIC_API_KEY. */
+  /** API key. Defaults to JUDGE_ANTHROPIC_API_KEY, then ANTHROPIC_API_KEY. */
   apiKey?: string;
   /** Model id. Defaults to process.env.CLAUDE_MODEL or "claude-sonnet-4-6". */
   model?: string;
@@ -61,10 +61,18 @@ export class AnthropicJudgeClient implements JudgeClient {
   private readonly client: Anthropic;
 
   constructor(opts: AnthropicJudgeOptions = {}) {
-    const apiKey = opts.apiKey ?? process.env.ANTHROPIC_API_KEY;
+    // JUDGE_ANTHROPIC_API_KEY first: Claude Code on the web reserves the plain
+    // ANTHROPIC_API_KEY name for its own account auth, so a value set under that
+    // name isn't reliably passed through to this process. The JUDGE_-prefixed
+    // name is not reserved and passes straight through; plain ANTHROPIC_API_KEY
+    // stays as a fallback for local/CI use.
+    const apiKey =
+      opts.apiKey ??
+      process.env.JUDGE_ANTHROPIC_API_KEY ??
+      process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error(
-        'ANTHROPIC_API_KEY is not set; cannot construct AnthropicJudgeClient.',
+        'No Anthropic key set (JUDGE_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY); cannot construct AnthropicJudgeClient.',
       );
     }
     this.model = opts.model ?? process.env.CLAUDE_MODEL ?? DEFAULT_MODEL;

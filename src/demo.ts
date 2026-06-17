@@ -48,7 +48,7 @@ function mimeFromPath(path: string): string {
 // Vendor precedence mirrors lib/server/container.ts: Anthropic first, then
 // Gemini. Lazy imports so the fake path never loads a vendor SDK.
 async function makeLiveClient(): Promise<JudgeClient> {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (process.env.JUDGE_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY) {
     const { AnthropicJudgeClient } = await import('./judge/claude');
     return new AnthropicJudgeClient();
   }
@@ -57,7 +57,7 @@ async function makeLiveClient(): Promise<JudgeClient> {
     return new GeminiJudgeClient();
   }
   throw new Error(
-    'No vendor key set. Set ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini) to run the live judge.',
+    'No vendor key set. Set JUDGE_ANTHROPIC_API_KEY/ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini) to run the live judge.',
   );
 }
 
