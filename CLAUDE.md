@@ -49,9 +49,11 @@ child-provisioning UI, PWA **role gating**, **per-child RLS scoping**, and the
 enforce. **All env-gated** (see "The auth layer"): with no `SUPABASE_ANON_KEY` the
 app falls back to the legacy single-implicit-family / role-by-URL / no-login mode —
 the keyless default here + in CI. Verified by `npm run typecheck` + the keyless
-`npm run build` + the unchanged 68 tests + a keyless dev smoke; the **live auth flow
-is not runtime-verified** (no live Supabase here — the same scaffold-&-defer posture
-as `gemini.ts`/the adapters). And now the **Storage object RLS** slice (migration
+`npm run build` + the unchanged 72 tests; and the **live auth flow is now
+runtime-verified** through the Next app by the browser auth-flow smoke
+(`npm run smoke:auth-flow` — sign-in, the `proxy.ts` cookie refresh, Server-Action
+sign-out, parent-only provisioning, per-role gating; see "The live smokes"). And now
+the **Storage object RLS** slice (migration
 `0004_storage_rls.sql`): photo **bytes** are written under a family-prefixed object
 path (`<family_id>/…`) and Storage I/O rides the authenticated client, so the
 per-family RLS that already guards the DB rows now guards the bytes too (PRD User
@@ -284,18 +286,21 @@ photo bytes are now written under a **family-prefixed** object path and Storage 
 rides the authenticated client, so the per-family RLS guards the bytes too, not just
 the rows (US17) — `SupabaseContext` no longer carries the service-role `storageClient`
 escape hatch. RLS *enforcement* under real authenticated JWTs is **now live-verified** by
-the auth-mode smoke (see "The live smokes"). **Still deferred:** `family_id` `NOT NULL` +
-backfill; the Storage bucket itself (a manual prerequisite the migration does not create);
-and the full browser login/session flow (middleware cookie refresh + Server-Action auth),
-which the RLS smoke does not exercise.
+the auth-mode smoke (see "The live smokes"). The full browser login/session flow
+(middleware cookie refresh + Server-Action sign-in/out) — which the RLS smoke does not
+exercise — is now covered by the **browser auth-flow smoke** (`npm run smoke:auth-flow`).
+**Still deferred:** `family_id` `NOT NULL` + backfill, and the Storage bucket itself (a
+manual prerequisite the migration does not create).
 
-## The live smokes (`scripts/supabase-smoke.ts`, `supabase-auth-smoke.ts`)
+## The live smokes (`scripts/supabase-smoke.ts`, `supabase-auth-smoke.ts`, `auth-flow-smoke.ts`)
 
-Two env-gated live integration checks, **both run green** against the live
+Three env-gated live integration checks, **all run green** against the live
 `family-chore-tracker` project. They share helpers via `scripts/smoke-shared.ts`
 (`loadEnv` / `solidPng` / `assert`). The service-role smoke proves the adapter
-round-trip; the auth-mode smoke proves RLS *enforcement* — the one thing the service
-role can't, since it bypasses RLS.
+round-trip; the auth-mode smoke proves RLS *enforcement* (the one thing the service
+role can't, since it bypasses RLS); the **browser auth-flow smoke** proves the Next
+**app's** login/session/gating layer, the one thing the other two can't, since they
+talk to Supabase directly, not through the app.
 
 ### Service-role round-trip — `npm run smoke:supabase`
 
@@ -337,9 +342,31 @@ see/insert/probe family B's rows (and vice-versa); **0003** per-child — a chil
 only their own submissions/verdicts while the parent sees the whole family, and a child
 can't insert as a sibling or into another family; **0004** Storage — a parent can read
 their own family's photo bytes but cannot download or upload under family B's path
-prefix. So RLS isolates rather than blanket-denies, under real JWTs. **Not covered by
-either smoke:** the live Gemini judge (both ran keyless) and the full browser
-login/session flow (Next middleware cookie refresh + Server-Action auth).
+prefix. So RLS isolates rather than blanket-denies, under real JWTs.
+
+### Browser auth flow — `npm run smoke:auth-flow`
+
+`npm run smoke:auth-flow` proves the **Next app's** login/session/gating layer — what
+the other two smokes can't, since they hit Supabase directly. It drives a running
+authMode server (`npm run build && (set -a; . ./.env; set +a; npm start)`; target
+`BASE_URL`, default `http://localhost:3000`) through the Server Action **no-JavaScript
+form path**: GET a page, parse the form's `$ACTION_*` hidden fields, POST them back
+(multipart, with an `Origin` header for the Server Action CSRF check) plus the user's
+inputs, and follow redirects by hand while carrying cookies — exactly what a JS-off
+browser does. The service-role key is used only to admin-provision a confirmed parent
+(when sign-up can't run — see below) and for cleanup; a parent + child + family are
+created and removed at the end (`--keep` to retain). This is why the `/login` page
+honors `?tab=` (each form is server-rendered + reachable without JS).
+
+**Verified live (12 checks green, 1 skipped):** parent **sign-in** → `/parent`;
+`proxy.ts`-refreshed **session cookie** carried across requests; **role gating** both
+ways (a parent is bounced from `/child`, a child from `/parent`; an already-signed-in
+user off `/login`); **parent-only child provisioning** ("Child added"); **sign-out**
+clears the cookie (`/parent` → `/login` after); **child sign-in** → `/child`. The one
+**skipped** step is browser **create-family sign-up** with an immediate session: the
+shared test project has "Confirm email" ON (the smoke detects this and admin-provisions
+the parent instead), and v1 requires it OFF. **Not covered:** the live Gemini judge
+(keyless) — unrelated to auth.
 
 ## The auth layer (`lib/server/auth.ts`, `proxy.ts`, `app/auth/`, `app/login/`)
 
@@ -368,7 +395,7 @@ user-facing bytes.
 | `lib/server/auth.ts` | `authMode()`; `getAuthedClient()` (per-request `@supabase/ssr` server client, cookies via `next/headers`, `cache()`d); `getAdminContext()` (the service-role context, for provisioning + Storage); `getIdentity()` (`{ userId, familyId, role, username }` from the user's own `users` row via RLS `users_select_self`); `requireUser`/`requireParent`/`requireChild` (redirect guards). `import 'server-only'`. |
 | `proxy.ts` | The Next 16 `proxy` (the renamed `middleware`): refreshes the session cookie each request; a **no-op** when auth is unconfigured. |
 | `app/auth/actions.ts` | `signUpParentAction` (creates the family + parent `users` row), `signInParentAction`, `signInChildAction` (username→synthetic email), `signOutAction`, `provisionChildAction` (parent-only; mints a confirmed child auth user via the admin API + inserts its `users` row). |
-| `app/login/` | The login UI — parent sign-in / create-family / child sign-in tabs. |
+| `app/login/` | The login UI — parent sign-in / create-family / child sign-in tabs. `?tab=` selects which form is **server-rendered**, so each is deep-linkable + works without JS (the client tabs still toggle instantly); this also lets the browser auth-flow smoke reach every form. |
 | `app/parent/children/` | Parent-only: provision + list the family's children. |
 
 **Children have no email** (PRD: parent-provisioned, no self-registration): a child's
@@ -377,12 +404,17 @@ is derived deterministically, so login needs only the username + password — no
 delivery. **The container owns the flip** (`getStores`/`getSeededChore` branch on
 `authMode()`); pages call `requireParent`/`requireChild`, and Server Actions thread
 `childId` = the session user id. **Manual prerequisite:** turn OFF "Confirm email" in
-Supabase Auth for v1 (parents need an immediate session). **Partially runtime-verified:**
-the auth-mode RLS smoke (`npm run smoke:supabase-auth`) now proves the per-family/
-per-child/Storage policies enforce under real authenticated JWTs (provisioning + the
-authenticated-client adapter path included). What remains unverified is the **browser**
-login/session flow — the Next middleware cookie refresh + Server-Action sign-in/out —
-since the smoke talks to Supabase directly, not through the Next app.
+Supabase Auth for v1 (parents need an immediate session). **Runtime-verified:** the
+auth-mode RLS smoke (`npm run smoke:supabase-auth`) proves the per-family/per-child/
+Storage policies enforce under real authenticated JWTs (provisioning + the
+authenticated-client adapter path included), and the **browser auth-flow smoke**
+(`npm run smoke:supabase-auth`'s sibling, `npm run smoke:auth-flow`) now drives the
+Next app itself — sign-in, the `proxy.ts` cookie refresh, Server-Action sign-out,
+parent-only child provisioning, and per-role page gating — through the no-JS Server
+Action form path (see "The live smokes"). The only piece still unexercised is the
+**create-family sign-up** with an immediate session, which needs a project with
+"Confirm email" OFF (the shared test project has it ON, so the smoke skips that one
+step and admin-provisions the parent instead).
 
 ## The PWA (`app/`, `lib/server/`)
 
@@ -442,6 +474,7 @@ npm run typecheck # tsc for the core (tsconfig.core.json) AND the app (tsconfig.
 npm run demo      # runs the tracer bullet end-to-end with the fake judge
 npm run smoke:supabase       # live service-role round-trip of the 3 adapters (needs SUPABASE_* in .env)
 npm run smoke:supabase-auth  # live per-family/per-child/Storage RLS enforcement (also needs SUPABASE_ANON_KEY)
+npm run smoke:auth-flow      # browser login/session/gating via the Next app (needs a running authMode server)
 # Live path (needs a key): cp .env.example .env, set GEMINI_API_KEY, then:
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
@@ -450,7 +483,9 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # private Storage bucket, then `npm run smoke:supabase` to verify the round-trip. Unset → in-memory.
 # Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
 # Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
-# Then `npm run smoke:supabase-auth` proves RLS isolation under real authenticated JWTs.
+# Then `npm run smoke:supabase-auth` proves RLS isolation under real authenticated JWTs,
+# and (with a built server running in authMode) `npm run smoke:auth-flow` drives the
+# browser login/session/gating through the Next app itself.
 ```
 
 ## Conventions
