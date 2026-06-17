@@ -63,9 +63,11 @@ runtime-verified). Also built: the **offline service worker** (`public/sw.js` +
 (navigations fall back to a branded offline page; hashed static assets serve
 cache-first), deliberately **not** an offline submission queue (judging needs the
 network). Verified by the keyless `npm run build` + a `npm start` round-trip
-(`/sw.js` served no-store with the right MIME; `/offline` renders). Not yet built
-(see PRD): an offline **submission queue** (queue + replay photo bytes), and
-`family_id` `NOT NULL` + backfill.
+(`/sw.js` served no-store with the right MIME; `/offline` renders). Also built: the
+**`family_id` `NOT NULL` hardening** (migration `0006`) — the four data tables now
+enforce per-row tenancy in the schema, with a conditional legacy backfill; applied
+live + verified (the service-role smoke round-trips green against it). Not yet built
+(see PRD): an offline **submission queue** (queue + replay photo bytes).
 
 ## Architecture: the judging core (`src/judge/`)
 
@@ -261,6 +263,7 @@ path); the two smokes are the env-gated integration checks.
 | `supabase/migrations/0003_auth.sql` | The auth activations: `users.username` (a child's login handle), the `private.auth_role()` helper, and **child-record-level RLS** — submissions/verdicts tighten so a child sees/inserts only their own rows while a parent sees the whole family. |
 | `supabase/migrations/0004_storage_rls.sql` | **Storage object RLS:** per-family `select`/`insert` policies on `storage.objects`, keyed on the family-prefixed object path (`(storage.foldername(name))[1]` = `private.auth_family_id()`), so the photo **bytes** get the per-family isolation the rows already have (US17). |
 | `supabase/migrations/0005_harden_function_search_path.sql` | Hardening from the live smoke's security advisor: re-creates `set_current_reference` with a pinned `set search_path = ''` + schema-qualified names (lint `0011_function_search_path_mutable`), and drops the orphaned pre-`family_id` 4-arg overload. Behavior unchanged. |
+| `supabase/migrations/0006_family_id_not_null.sql` | `family_id` `NOT NULL` on the four data tables (`chores`/`chore_references`/`submissions`/`verdicts`), pinning per-row tenancy in the schema (it was nullable since the non-breaking `0002` add). A **conditional, defensive backfill** adopts any orphan rows into the seeded "My Family" (find-or-create) before the `SET NOT NULL`; a no-op on a clean/tenanted DB. `users.family_id` was already `NOT NULL`. Applied live + verified. |
 
 **Env-gated in `container.ts`:** all three stores switch **together** to Supabase
 when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (dynamic import keeps the
@@ -289,8 +292,9 @@ escape hatch. RLS *enforcement* under real authenticated JWTs is **now live-veri
 the auth-mode smoke (see "The live smokes"). The full browser login/session flow
 (middleware cookie refresh + Server-Action sign-in/out) — which the RLS smoke does not
 exercise — is now covered by the **browser auth-flow smoke** (`npm run smoke:auth-flow`).
-**Still deferred:** `family_id` `NOT NULL` + backfill, and the Storage bucket itself (a
-manual prerequisite the migration does not create).
+`family_id` is **now `NOT NULL`** on the four data tables (migration `0006`, applied
+live). **Still deferred:** the Storage bucket itself (a manual prerequisite the
+migrations do not create).
 
 ## The live smokes (`scripts/supabase-smoke.ts`, `supabase-auth-smoke.ts`, `auth-flow-smoke.ts`)
 
@@ -480,7 +484,8 @@ npm run smoke:auth-flow      # browser login/session/gating via the Next app (ne
 GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
 # SUPABASE_STORAGE_BUCKET, run the migrations in order (0001_init.sql, 0002_accounts.sql,
-# 0003_auth.sql, 0004_storage_rls.sql, 0005_harden_function_search_path.sql), create a
+# 0003_auth.sql, 0004_storage_rls.sql, 0005_harden_function_search_path.sql,
+# 0006_family_id_not_null.sql), create a
 # private Storage bucket, then `npm run smoke:supabase` to verify the round-trip. Unset → in-memory.
 # Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
 # Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
