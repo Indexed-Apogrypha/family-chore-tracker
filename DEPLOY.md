@@ -6,6 +6,10 @@ How to get the Family Chore Tracker onto your phones for a real demo:
 The app code is ready; this is the ops checklist. Steps that need your accounts and
 secrets are marked **[you]**. Do them in order.
 
+> Prefer a friendlier, click-by-click version with checkpoints and
+> troubleshooting? See **[WALKTHROUGH.md](./WALKTHROUGH.md)** — same path, more
+> hand-holding.
+
 ## 0. Prerequisites
 
 - A GitHub account with this repo (you have it).
