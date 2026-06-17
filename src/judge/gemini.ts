@@ -44,7 +44,7 @@ const RESPONSE_SCHEMA: Schema = {
 };
 
 export interface GeminiJudgeOptions {
-  /** API key. Defaults to process.env.GEMINI_API_KEY. */
+  /** API key. Defaults to JUDGE_GEMINI_API_KEY, then GEMINI_API_KEY. */
   apiKey?: string;
   /** Model id. Defaults to process.env.GEMINI_MODEL or "gemini-2.5-flash". */
   model?: string;
@@ -59,10 +59,16 @@ export class GeminiJudgeClient implements JudgeClient {
   private readonly ai: GoogleGenAI;
 
   constructor(opts: GeminiJudgeOptions = {}) {
-    const apiKey = opts.apiKey ?? process.env.GEMINI_API_KEY;
+    // JUDGE_GEMINI_API_KEY first, for naming parity with the Claude adapter;
+    // GEMINI_API_KEY stays the fallback. Unlike ANTHROPIC_API_KEY, the plain name
+    // isn't reserved by Claude Code — the alias here is purely for consistency.
+    const apiKey =
+      opts.apiKey ??
+      process.env.JUDGE_GEMINI_API_KEY ??
+      process.env.GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error(
-        'GEMINI_API_KEY is not set; cannot construct GeminiJudgeClient.',
+        'No Gemini key set (JUDGE_GEMINI_API_KEY or GEMINI_API_KEY); cannot construct GeminiJudgeClient.',
       );
     }
     this.model = opts.model ?? process.env.GEMINI_MODEL ?? DEFAULT_MODEL;

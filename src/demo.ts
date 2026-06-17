@@ -52,12 +52,13 @@ async function makeLiveClient(): Promise<JudgeClient> {
     const { AnthropicJudgeClient } = await import('./judge/claude');
     return new AnthropicJudgeClient();
   }
-  if (process.env.GEMINI_API_KEY) {
+  if (process.env.JUDGE_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
     const { GeminiJudgeClient } = await import('./judge/gemini');
     return new GeminiJudgeClient();
   }
   throw new Error(
-    'No vendor key set. Set JUDGE_ANTHROPIC_API_KEY/ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini) to run the live judge.',
+    'No vendor key set. Set JUDGE_ANTHROPIC_API_KEY/ANTHROPIC_API_KEY (Claude) or ' +
+      'JUDGE_GEMINI_API_KEY/GEMINI_API_KEY (Gemini) to run the live judge.',
   );
 }
 

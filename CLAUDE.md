@@ -465,13 +465,15 @@ client import is a build error. Client components import the core's **types only
    adapters".
 2. **The judge is env-gated** in `container.ts`: the live `AnthropicJudgeClient`
    (Claude vision) when `JUDGE_ANTHROPIC_API_KEY`/`ANTHROPIC_API_KEY` is set, else the
-   live `GeminiJudgeClient` when `GEMINI_API_KEY` is set (each dynamic-`import`ed, so a
-   vendor SDK only loads when that vendor is keyed), otherwise `FakeJudgeClient(CLEAN_PASS)`
-   — so the app runs with no key here and in CI. Both live adapters sit behind the identical
-   `JudgeClient` seam; Anthropic takes precedence (Claude is the compliance-preferred vendor
-   for children's images — see `docs/compliance.md`). `JUDGE_ANTHROPIC_API_KEY` is the primary
-   name because Claude Code on the web reserves plain `ANTHROPIC_API_KEY` for its own account
-   auth; `ANTHROPIC_API_KEY` remains the local/CI fallback.
+   live `GeminiJudgeClient` when `JUDGE_GEMINI_API_KEY`/`GEMINI_API_KEY` is set (each
+   dynamic-`import`ed, so a vendor SDK only loads when that vendor is keyed), otherwise
+   `FakeJudgeClient(CLEAN_PASS)` — so the app runs with no key here and in CI. Both live
+   adapters sit behind the identical `JudgeClient` seam; Anthropic takes precedence (Claude is
+   the compliance-preferred vendor for children's images — see `docs/compliance.md`). Each
+   vendor reads a `JUDGE_`-prefixed key first, then the plain name: `JUDGE_ANTHROPIC_API_KEY`
+   is required on Claude Code on the web (it reserves plain `ANTHROPIC_API_KEY` for its own
+   account auth); `JUDGE_GEMINI_API_KEY` is parity only (plain `GEMINI_API_KEY` isn't reserved).
+   The plain names remain the local/CI fallback.
 3. **Auth is env-gated** — real Supabase Auth + per-family RLS when
    `SUPABASE_ANON_KEY` is set (`authMode()`), else the legacy no-login mode. See
    "The auth layer".

@@ -176,7 +176,7 @@ async function getJudge(): Promise<JudgeClient> {
     const { AnthropicJudgeClient } = await import('../../src/judge/claude');
     return new AnthropicJudgeClient();
   }
-  if (process.env.GEMINI_API_KEY) {
+  if (process.env.JUDGE_GEMINI_API_KEY || process.env.GEMINI_API_KEY) {
     const { GeminiJudgeClient } = await import('../../src/judge/gemini');
     return new GeminiJudgeClient();
   }
