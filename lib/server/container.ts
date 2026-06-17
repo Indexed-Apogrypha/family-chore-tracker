@@ -154,10 +154,11 @@ export async function getSeededChore(): Promise<{ choreId: string; choreName: st
 }
 
 /**
- * Builds the `submitChore` deps with an env-gated judge: the live Gemini adapter
- * when `GEMINI_API_KEY` is set, otherwise the deterministic fake — so the app
- * runs with no key here and in CI. The Gemini adapter is loaded via dynamic
- * import so `@google/genai` only enters the server runtime when a key is present.
+ * Builds the `submitChore` deps with an env-gated judge: the live Claude adapter
+ * when `ANTHROPIC_API_KEY` is set, else the live Gemini adapter when
+ * `GEMINI_API_KEY` is set, otherwise the deterministic fake — so the app runs
+ * with no key here and in CI. Each vendor adapter is loaded via dynamic import so
+ * its SDK only enters the server runtime when that vendor is keyed.
  */
 export async function buildSubmitDeps(): Promise<SubmitChoreDeps> {
   const { chores, references, submissions } = await getStores();
@@ -165,6 +166,14 @@ export async function buildSubmitDeps(): Promise<SubmitChoreDeps> {
 }
 
 async function getJudge(): Promise<JudgeClient> {
+  // Two live adapters behind the identical JudgeClient seam, each dynamically
+  // imported so its vendor SDK only enters the server runtime when keyed.
+  // ANTHROPIC_API_KEY takes precedence — Claude is the compliance-preferred
+  // vendor for children's images (see docs/compliance.md).
+  if (process.env.ANTHROPIC_API_KEY) {
+    const { AnthropicJudgeClient } = await import('../../src/judge/claude');
+    return new AnthropicJudgeClient();
+  }
   if (process.env.GEMINI_API_KEY) {
     const { GeminiJudgeClient } = await import('../../src/judge/gemini');
     return new GeminiJudgeClient();

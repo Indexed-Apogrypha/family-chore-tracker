@@ -211,6 +211,71 @@ Vertex resolves **Issue A**, not necessarily **Issue B**.
 
 ---
 
+## Vendor choice: Gemini vs. Claude (Anthropic)
+
+Blocker 2 is vendor-specific, so the choice of vision vendor materially changes how hard it is
+to clear. **Anthropic's Claude API is the more permissive posture for a child-facing app** — but
+it does **not** touch Blocker 1 (COPPA is vendor-independent: the consent, notice, retention, and
+security obligations are identical whichever vendor sees the bytes).
+
+**Sourcing note:** Anthropic's legal/policy pages (`anthropic.com/legal/*`, support/privacy
+articles) blocked the research fetcher (Cloudflare 403), so quotes from those are search-extracted
+and cross-checked across multiple sources — high confidence on substance, medium on exact wording;
+verify against the live page before relying contractually. The `platform.claude.com` docs (vision,
+data retention) were fetched directly (high confidence).
+
+### The decisive difference: the minors clause
+
+- **Gemini (Developer API) — flat prohibition.** "You … will not use the Services as part of a
+  website, application, or other service … that is **directed towards or is likely to be accessed
+  by individuals under the age of 18**." A child-facing chore app likely can't use it at all,
+  regardless of consent.
+- **Anthropic — conditional permission.** The Usage Policy "allows organizations to incorporate
+  Claude's API into their products for minors **if** they agree to implement certain safety
+  features and **disclose** to their users that their product is leveraging an AI system."
+  Anthropic publicly "now lets kids use its AI tech — within limits."
+
+So Claude converts a likely-disqualifying term into a workable one — at the cost of an explicit,
+developer-owned safeguard burden (age verification, content moderation/monitoring, AI-use
+disclosure, optionally Anthropic's child-safety system prompt, and COPPA compliance). Your
+**parent-provisioned accounts** plausibly satisfy Anthropic's "age verification" expectation
+(lawyer to confirm).
+
+### Side-by-side
+
+| Axis | Gemini Developer API | Anthropic Claude API |
+| --- | --- | --- |
+| Minors / under-18 clients | **Flat prohibition** | **Conditional-allowed** (safeguards + AI disclosure + COPPA) |
+| Trains on your data? | Free tier: **yes** (incl. images). Paid: no | **No, by default** ("Retained data is never used for model training without your express permission") |
+| Retention | Paid: ~55-day abuse log; ZDR option | Not retained by default; **≤30 days** standard; **ZDR** for commercial (contract-gated; not on Fable 5) |
+| DPA / BAA | Cloud DPA (via Vertex AI) | Commercial DPA + HIPAA BAA available |
+| Vision | Yes | Yes — "All current Claude models support … vision"; joint multi-image compare, 10 MB/img, 8000×8000 px |
+| Cheapest tier cost | Gemini 2.5 Flash ≈ $0.30 / $2.50 per 1M | Haiku 4.5 $1 / $5; Sonnet 4.6 $3 / $15 |
+
+### Recommendation
+
+For this app, **Claude is the stronger compliance posture**: it replaces Gemini's flat under-18
+prohibition with a conditional permission you can meet, and gives no-training-by-default + optional
+ZDR for children's images. Trade-offs: higher per-token cost than Gemini Flash, plus Anthropic's
+own safeguard/disclosure requirements — and the full COPPA build is unchanged either way. The
+codebase's `JudgeClient` vendor seam makes the swap a single adapter (`src/judge/claude.ts`,
+`AnthropicJudgeClient`, env-gated via `ANTHROPIC_API_KEY`, default model `claude-sonnet-4-6`), so
+this is a config choice, not a rewrite.
+
+Two lawyer flags: (1) exact Anthropic clause wording (pages were 403'd in research); (2) whether
+parent-provisioning satisfies Anthropic's "age verification" expectation.
+
+Anthropic primary sources (verify live):
+
+- Usage Policy: <https://www.anthropic.com/legal/aup>
+- Organizations Serving Minors: <https://support.claude.com/en/articles/9307344-responsible-use-of-anthropic-s-models-guidelines-for-organizations-serving-minors>
+- Commercial Terms of Service: <https://www.anthropic.com/legal/commercial-terms>
+- API & data retention (no training by default; ZDR): <https://platform.claude.com/docs/en/build-with-claude/api-and-data-retention>
+- Commercial DPA: <https://www.anthropic.com/legal/commercial-dpa>
+- Vision support: <https://platform.claude.com/docs/en/build-with-claude/vision>
+
+---
+
 ## What this app must do before onboarding real children — checklist
 
 ### COPPA
@@ -278,10 +343,12 @@ Vertex resolves **Issue A**, not necessarily **Issue B**.
 
 The **COPPA blocker is well-understood and buildable** — VPC flow + notices +
 retention/deletion + security program, all of which fit the existing parent/child
-architecture. The **Gemini blocker is sharper**: the free tier is disqualified outright, and
-the Developer API's "no under-18-accessible clients" term may forbid this use entirely
-regardless of consent — pushing toward Vertex AI and/or a direct conversation with Google.
-Treat that contractual clause as the top item to resolve before committing engineering effort
-to the consent flow.
+architecture, and it is the **same lift regardless of vision vendor**. The **vendor blocker is
+sharper on Gemini**: the free tier is disqualified outright, and the Developer API's "no
+under-18-accessible clients" term may forbid this use entirely regardless of consent. **Switching
+the judge to Claude largely resolves the vendor blocker** (conditional-allowed minors clause +
+no-training-by-default), which the codebase now supports behind the `JudgeClient` seam
+(`AnthropicJudgeClient`, env-gated via `ANTHROPIC_API_KEY`). If you stay on Gemini, treat the
+under-18 clause as the top item to resolve (Vertex AI and/or a direct conversation with Google).
 
 For the **prototype with adult test data, none of this blocks you** — proceed.
