@@ -25,7 +25,12 @@ import { loadEnv } from './smoke-shared';
 
 const BASE = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 const RUN = Date.now().toString(36);
-const PARENT_EMAIL = `smoke-parent-${RUN}@example.com`;
+// Supabase's public signUp rejects RFC-reserved domains (example.com, .test,
+// .invalid, .local) as invalid, so the parent uses a normal domain (override with
+// SMOKE_EMAIL_DOMAIN). With "Confirm email" OFF — the v1 prerequisite — no mail is
+// actually delivered to it.
+const EMAIL_DOMAIN = process.env.SMOKE_EMAIL_DOMAIN || 'choretracker.app';
+const PARENT_EMAIL = `smoke-parent-${RUN}@${EMAIL_DOMAIN}`;
 const PARENT_PASSWORD = `Smoke!pw-${RUN}`;
 const CHILD_USERNAME = `smoke-child-${RUN}`;
 const CHILD_PASSWORD = `Smoke!kid-${RUN}`;
