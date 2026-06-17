@@ -353,20 +353,22 @@ authMode server (`npm run build && (set -a; . ./.env; set +a; npm start)`; targe
 form path**: GET a page, parse the form's `$ACTION_*` hidden fields, POST them back
 (multipart, with an `Origin` header for the Server Action CSRF check) plus the user's
 inputs, and follow redirects by hand while carrying cookies — exactly what a JS-off
-browser does. The service-role key is used only to admin-provision a confirmed parent
-(when sign-up can't run — see below) and for cleanup; a parent + child + family are
+browser does. The service-role key is used only to clean up (and to admin-provision a
+confirmed parent as a fallback if sign-up can't run); a parent + child + family are
 created and removed at the end (`--keep` to retain). This is why the `/login` page
-honors `?tab=` (each form is server-rendered + reachable without JS).
+honors `?tab=` (each form is server-rendered + reachable without JS). The parent's
+test email uses a normal domain (`SMOKE_EMAIL_DOMAIN`, default `choretracker.app`) —
+Supabase's public signUp rejects RFC-reserved domains like `example.com`.
 
-**Verified live (12 checks green, 1 skipped):** parent **sign-in** → `/parent`;
+**Verified live (13 checks green):** browser **create-family sign-up** → `/parent`
+(needs "Confirm email" OFF — now set on the project); parent **sign-in** → `/parent`;
 `proxy.ts`-refreshed **session cookie** carried across requests; **role gating** both
 ways (a parent is bounced from `/child`, a child from `/parent`; an already-signed-in
 user off `/login`); **parent-only child provisioning** ("Child added"); **sign-out**
-clears the cookie (`/parent` → `/login` after); **child sign-in** → `/child`. The one
-**skipped** step is browser **create-family sign-up** with an immediate session: the
-shared test project has "Confirm email" ON (the smoke detects this and admin-provisions
-the parent instead), and v1 requires it OFF. **Not covered:** the live Gemini judge
-(keyless) — unrelated to auth.
+clears the cookie (`/parent` → `/login` after); **child sign-in** → `/child`. If a
+project has "Confirm email" ON, the smoke detects it, skips just the sign-up step, and
+admin-provisions the parent instead. **Not covered:** the live Gemini judge (keyless)
+— unrelated to auth.
 
 ## The auth layer (`lib/server/auth.ts`, `proxy.ts`, `app/auth/`, `app/login/`)
 
@@ -408,13 +410,12 @@ Supabase Auth for v1 (parents need an immediate session). **Runtime-verified:** 
 auth-mode RLS smoke (`npm run smoke:supabase-auth`) proves the per-family/per-child/
 Storage policies enforce under real authenticated JWTs (provisioning + the
 authenticated-client adapter path included), and the **browser auth-flow smoke**
-(`npm run smoke:supabase-auth`'s sibling, `npm run smoke:auth-flow`) now drives the
-Next app itself — sign-in, the `proxy.ts` cookie refresh, Server-Action sign-out,
-parent-only child provisioning, and per-role page gating — through the no-JS Server
-Action form path (see "The live smokes"). The only piece still unexercised is the
-**create-family sign-up** with an immediate session, which needs a project with
-"Confirm email" OFF (the shared test project has it ON, so the smoke skips that one
-step and admin-provisions the parent instead).
+(`npm run smoke:auth-flow`, sibling of `smoke:supabase-auth`) drives the Next app
+itself — **create-family sign-up**, sign-in, the `proxy.ts` cookie refresh,
+Server-Action sign-out, parent-only child provisioning, and per-role page gating —
+through the no-JS Server Action form path (see "The live smokes"), **13/13 green**
+with "Confirm email" turned OFF on the project. (With it ON, the smoke skips just the
+sign-up step and admin-provisions the parent instead.)
 
 ## The PWA (`app/`, `lib/server/`)
 
