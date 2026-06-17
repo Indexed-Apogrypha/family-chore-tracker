@@ -9,7 +9,8 @@ import {
   type AuthResult,
 } from '../auth/actions';
 
-type Tab = 'parent-signin' | 'parent-signup' | 'child-signin';
+export type LoginTab = 'parent-signin' | 'parent-signup' | 'child-signin';
+type Tab = LoginTab;
 
 function Submit({ label, pendingLabel }: { label: string; pendingLabel: string }) {
   const { pending } = useFormStatus();
@@ -83,8 +84,8 @@ function ChildSignIn() {
   );
 }
 
-export function LoginForms() {
-  const [tab, setTab] = useState<Tab>('parent-signin');
+export function LoginForms({ initialTab = 'parent-signin' }: { initialTab?: LoginTab }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
   const tabClass = (t: Tab) => (t === tab ? 'tab tab-active' : 'tab');
   return (
     <div className="stack">
