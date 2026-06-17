@@ -264,6 +264,7 @@ path); the two smokes are the env-gated integration checks.
 | `supabase/migrations/0004_storage_rls.sql` | **Storage object RLS:** per-family `select`/`insert` policies on `storage.objects`, keyed on the family-prefixed object path (`(storage.foldername(name))[1]` = `private.auth_family_id()`), so the photo **bytes** get the per-family isolation the rows already have (US17). |
 | `supabase/migrations/0005_harden_function_search_path.sql` | Hardening from the live smoke's security advisor: re-creates `set_current_reference` with a pinned `set search_path = ''` + schema-qualified names (lint `0011_function_search_path_mutable`), and drops the orphaned pre-`family_id` 4-arg overload. Behavior unchanged. |
 | `supabase/migrations/0006_family_id_not_null.sql` | `family_id` `NOT NULL` on the four data tables (`chores`/`chore_references`/`submissions`/`verdicts`), pinning per-row tenancy in the schema (it was nullable since the non-breaking `0002` add). A **conditional, defensive backfill** adopts any orphan rows into the seeded "My Family" (find-or-create) before the `SET NOT NULL`; a no-op on a clean/tenanted DB. `users.family_id` was already `NOT NULL`. Applied live + verified. |
+| `supabase/migrations/0007_storage_bucket.sql` | Creates the **private** `chore-photos` Storage bucket (`public = false`) so a fresh deploy needs no by-hand bucket — the last manual prerequisite. Idempotent (`on conflict do nothing`), so it never alters an existing bucket. The id is the literal `chore-photos` and must match `SUPABASE_STORAGE_BUCKET` + the bucket literal in `0004`. Applied live (a no-op there) + verified. |
 
 **Env-gated in `container.ts`:** all three stores switch **together** to Supabase
 when `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` are set (dynamic import keeps the
@@ -293,8 +294,9 @@ the auth-mode smoke (see "The live smokes"). The full browser login/session flow
 (middleware cookie refresh + Server-Action sign-in/out) — which the RLS smoke does not
 exercise — is now covered by the **browser auth-flow smoke** (`npm run smoke:auth-flow`).
 `family_id` is **now `NOT NULL`** on the four data tables (migration `0006`, applied
-live). **Still deferred:** the Storage bucket itself (a manual prerequisite the
-migrations do not create).
+live), and the private **Storage bucket is now created by migration `0007`** (it was
+the last manual prerequisite) — so a fresh deploy needs only the migrations, no
+by-hand bucket. Both applied live + verified.
 
 ## The live smokes (`scripts/supabase-smoke.ts`, `supabase-auth-smoke.ts`, `auth-flow-smoke.ts`)
 
@@ -485,8 +487,8 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # Live Supabase persistence (optional): set SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY /
 # SUPABASE_STORAGE_BUCKET, run the migrations in order (0001_init.sql, 0002_accounts.sql,
 # 0003_auth.sql, 0004_storage_rls.sql, 0005_harden_function_search_path.sql,
-# 0006_family_id_not_null.sql), create a
-# private Storage bucket, then `npm run smoke:supabase` to verify the round-trip. Unset → in-memory.
+# 0006_family_id_not_null.sql, 0007_storage_bucket.sql) — 0007 creates the private bucket —
+# then `npm run smoke:supabase` to verify the round-trip. Unset → in-memory.
 # Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
 # Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
 # Then `npm run smoke:supabase-auth` proves RLS isolation under real authenticated JWTs,
