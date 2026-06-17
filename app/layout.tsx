@@ -7,7 +7,11 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Family Chore Tracker',
   description: 'Snap a photo to check the room is tidy.',
-  icons: { icon: '/icon.svg' },
+  icons: {
+    icon: '/icon.svg',
+    // iOS home-screen install needs a raster apple-touch-icon (it ignores SVG).
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export const viewport: Viewport = {

@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.core.json --noEmit && tsc -p tsconfig.json --noEmit",
     "demo": "tsx src/demo.ts",
+    "icons": "node scripts/generate-icons.mjs",
     "smoke:supabase": "tsx scripts/supabase-smoke.ts",
     "smoke:supabase-auth": "tsx scripts/supabase-auth-smoke.ts",
     "smoke:auth-flow": "tsx scripts/auth-flow-smoke.ts"

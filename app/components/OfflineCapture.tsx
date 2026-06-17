@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { enqueuePhoto } from '../../lib/offline/client';
+import { downscaleImage } from '../../lib/client/downscaleImage';
 
 /**
  * Lets a child capture a room photo from the cached `/offline` page when the app was
@@ -20,7 +21,8 @@ export function OfflineCapture() {
     const input = form.elements.namedItem('photo');
     const file = input instanceof HTMLInputElement ? input.files?.[0] : undefined;
     if (!file) return;
-    await enqueuePhoto(file, file.type || 'image/jpeg');
+    const prepared = await downscaleImage(file);
+    await enqueuePhoto(prepared, prepared.type || 'image/jpeg');
     form.reset();
     setSavedCount((n) => n + 1);
   }
