@@ -5,9 +5,10 @@
  *       Runs scripted scenarios through the fake judge — proves the spine
  *       end-to-end with no network or secrets.
  *
- *   GEMINI_API_KEY=... npm run demo -- <reference.jpg> <submission.jpg> ["Chore name"]
- *       Runs the live Gemini adapter on two real images through the exact same
- *       seam.
+ *   ANTHROPIC_API_KEY=... (or GEMINI_API_KEY=...) npm run demo -- <reference> <submission> ["Chore name"]
+ *       Runs the live judge on two real images through the exact same seam.
+ *       Vendor precedence mirrors the app: ANTHROPIC_API_KEY → Claude, else
+ *       GEMINI_API_KEY → Gemini.
  */
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
@@ -44,21 +45,35 @@ function mimeFromPath(path: string): string {
   }
 }
 
+// Vendor precedence mirrors lib/server/container.ts: Anthropic first, then
+// Gemini. Lazy imports so the fake path never loads a vendor SDK.
+async function makeLiveClient(): Promise<JudgeClient> {
+  if (process.env.ANTHROPIC_API_KEY) {
+    const { AnthropicJudgeClient } = await import('./judge/claude');
+    return new AnthropicJudgeClient();
+  }
+  if (process.env.GEMINI_API_KEY) {
+    const { GeminiJudgeClient } = await import('./judge/gemini');
+    return new GeminiJudgeClient();
+  }
+  throw new Error(
+    'No vendor key set. Set ANTHROPIC_API_KEY (Claude) or GEMINI_API_KEY (Gemini) to run the live judge.',
+  );
+}
+
 async function runLive(
   refPath: string,
   subPath: string,
   choreName: string,
 ): Promise<void> {
-  // Imported lazily so the fake path never loads the vendor SDK.
-  const { GeminiJudgeClient } = await import('./judge/gemini');
+  const client = await makeLiveClient();
   const [ref, sub] = await Promise.all([readFile(refPath), readFile(subPath)]);
   const input: JudgeInput = {
     choreName,
     referenceImage: { data: ref.toString('base64'), mimeType: mimeFromPath(refPath) },
     submissionImage: { data: sub.toString('base64'), mimeType: mimeFromPath(subPath) },
   };
-  const client: JudgeClient = new GeminiJudgeClient();
-  printVerdict(`LIVE: ${choreName}`, await runJudgment(client, input));
+  printVerdict(`LIVE (${client.model}): ${choreName}`, await runJudgment(client, input));
 }
 
 async function runScenarios(): Promise<void> {
