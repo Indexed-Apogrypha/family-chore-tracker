@@ -17,6 +17,7 @@
     "smoke:auth-flow": "tsx scripts/auth-flow-smoke.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
     "@google/genai": "^2.8.0",
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",

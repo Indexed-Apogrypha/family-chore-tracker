@@ -83,7 +83,8 @@ The spine is `reference + submission → judge (vendor seam) → evaluateVerdict
 | --- | --- |
 | `types.ts` | Domain types + the Zod `ModelJudgmentSchema` (the AI contract). |
 | `client.ts` | `JudgeClient` — the vendor-swap seam — plus `FakeJudgeClient`. |
-| `gemini.ts` | `GeminiJudgeClient`, the live adapter. **Not exported from `index.ts`** so the core never pulls in the vendor SDK. |
+| `gemini.ts` | `GeminiJudgeClient`, a live adapter. **Not exported from `index.ts`** so the core never pulls in the vendor SDK. |
+| `claude.ts` | `AnthropicJudgeClient`, a second live adapter (Claude vision). **Not exported from `index.ts`** like `gemini.ts`. The compliance-preferred vendor for children's images (see `docs/compliance.md`). |
 | `prompt.ts` | The judge prompt + severity rubric. |
 | `parse.ts` | `parseModelJudgment` — strict JSON + schema validation; throws `JudgmentParseError`. |
 | `evaluateVerdict.ts` | The v1 verdict policy (pure function). |
@@ -95,8 +96,9 @@ The spine is `reference + submission → judge (vendor seam) → evaluateVerdict
 1. **Vendor swap — `JudgeClient` (`client.ts`).** All vision-vendor code lives
    behind `judge(input) → ModelJudgment`. The pipeline, app, and tests depend
    only on this interface. Adding a model = one new implementation, zero changes
-   to callers. Never import a vendor SDK outside its adapter file, and keep
-   `gemini.ts` out of `index.ts`.
+   to callers (the live `GeminiJudgeClient` and `AnthropicJudgeClient` are the two
+   proofs of this). Never import a vendor SDK outside its adapter file, and keep
+   `gemini.ts` + `claude.ts` out of `index.ts`.
 2. **Policy — `evaluateVerdict` (`evaluateVerdict.ts`).** The *system*, not the
    model, decides the outcome. Keep it a pure function so it stays unit-testable.
 
@@ -461,10 +463,13 @@ client import is a build error. Client components import the core's **types only
    Both sit behind the identical `ChoreStore` / `ReferenceStore` /
    `SubmissionStore` ports; **only `container.ts` changes.** See "The Supabase
    adapters".
-2. **The judge is env-gated** in `container.ts`: the live `GeminiJudgeClient`
-   (dynamic `import`, so `@google/genai` only loads when keyed) when
-   `GEMINI_API_KEY` is set, otherwise `FakeJudgeClient(CLEAN_PASS)` — so the app
-   runs with no key here and in CI.
+2. **The judge is env-gated** in `container.ts`: the live `AnthropicJudgeClient`
+   (Claude vision) when `ANTHROPIC_API_KEY` is set, else the live `GeminiJudgeClient`
+   when `GEMINI_API_KEY` is set (each dynamic-`import`ed, so a vendor SDK only loads
+   when that vendor is keyed), otherwise `FakeJudgeClient(CLEAN_PASS)` — so the app
+   runs with no key here and in CI. Both live adapters sit behind the identical
+   `JudgeClient` seam; `ANTHROPIC_API_KEY` takes precedence (Claude is the
+   compliance-preferred vendor for children's images — see `docs/compliance.md`).
 3. **Auth is env-gated** — real Supabase Auth + per-family RLS when
    `SUPABASE_ANON_KEY` is set (`authMode()`), else the legacy no-login mode. See
    "The auth layer".
@@ -513,8 +518,11 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
   DOM/JSX/`isolatedModules`, and `src` excluded, so it relaxes
   `verbatimModuleSyntax`). `npm run typecheck` runs both — keeping DOM out of the
   core build is a real guarantee, so don't merge them into one config.
-- The default vision model is **Gemini Flash-class** (`gemini-2.5-flash`),
-  configurable via `GEMINI_MODEL`. Per the PRD it is deliberately swappable.
+- The vision judge has two live adapters behind one seam. Default Gemini model is
+  **Gemini Flash-class** (`gemini-2.5-flash`), configurable via `GEMINI_MODEL`;
+  default Claude model is `claude-sonnet-4-6`, configurable via `CLAUDE_MODEL`. Per
+  the PRD the vendor is deliberately swappable (`docs/compliance.md` covers the
+  Gemini-vs-Claude compliance comparison).
 
 ## Testing philosophy (from PRD)
 
