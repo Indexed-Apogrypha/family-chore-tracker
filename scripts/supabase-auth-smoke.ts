@@ -185,7 +185,10 @@ async function main(): Promise<void> {
       'Tidy room',
     );
     await setReference(
-      new SupabaseReferenceStore(makeCtx(famA.parent.client, bucket), famA.familyId),
+      {
+        references: new SupabaseReferenceStore(makeCtx(famA.parent.client, bucket), famA.familyId),
+        chores: new SupabaseChoreStore(makeCtx(famA.parent.client, bucket), famA.familyId),
+      },
       choreA.id,
       solidPng(16, [80, 160, 90]),
     );
@@ -194,7 +197,10 @@ async function main(): Promise<void> {
       'Tidy room',
     );
     await setReference(
-      new SupabaseReferenceStore(makeCtx(famB.parent.client, bucket), famB.familyId),
+      {
+        references: new SupabaseReferenceStore(makeCtx(famB.parent.client, bucket), famB.familyId),
+        chores: new SupabaseChoreStore(makeCtx(famB.parent.client, bucket), famB.familyId),
+      },
       choreB.id,
       solidPng(16, [160, 90, 80]),
     );
@@ -202,10 +208,12 @@ async function main(): Promise<void> {
     check('parent B created a chore + reference under their JWT', Boolean(choreB.id));
 
     const submitAs = (u: ProvisionedUser, familyId: string, choreId: string, choreName: string) => {
+      const ctx = makeCtx(u.client, bucket);
       const deps: SubmitChoreDeps = {
         judge: new FakeJudgeClient(CLEAN_PASS),
-        references: new SupabaseReferenceStore(makeCtx(u.client, bucket), familyId),
-        submissions: new SupabaseSubmissionStore(makeCtx(u.client, bucket), familyId),
+        chores: new SupabaseChoreStore(ctx, familyId),
+        references: new SupabaseReferenceStore(ctx, familyId),
+        submissions: new SupabaseSubmissionStore(ctx, familyId),
       };
       return submitChore(deps, {
         choreId,

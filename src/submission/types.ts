@@ -4,8 +4,8 @@ import type { ImageInput, Verdict } from '../judge';
  * A child's chore submission. Maps onto the `submissions` table in PRD.md
  * (`exif` jsonb; `family_id` denormalized for RLS). `family_id` and child
  * accounts are out of scope for this single-family, accounts-deferred slice.
- * `choreId` existence is now checkable via `getChore` (the chore module; wiring
- * it in is the next step); `childId` stays an opaque key until accounts exist.
+ * `choreId` existence is now validated by `submitChore` via `getChore` (the chore
+ * module) before any write; `childId` stays an opaque key until accounts exist.
  * `{ id, createdAt }` is structurally a `StreakSubmission`, so a record feeds
  * `computeStreak` with no field mapping.
  */

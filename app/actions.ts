@@ -52,9 +52,9 @@ export async function setReferenceAction(
   // Only a signed-in parent may set the reference (authMode); a no-op otherwise.
   if (authMode()) await requireParent();
 
-  const { references } = await getStores();
+  const { references, chores } = await getStores();
   const { choreId } = await getSeededChore();
-  await setReference(references, choreId, image);
+  await setReference({ references, chores }, choreId, image);
 
   revalidatePath('/parent');
   return { status: 'ok' };

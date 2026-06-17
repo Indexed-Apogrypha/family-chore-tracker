@@ -160,8 +160,8 @@ export async function getSeededChore(): Promise<{ choreId: string; choreName: st
  * import so `@google/genai` only enters the server runtime when a key is present.
  */
 export async function buildSubmitDeps(): Promise<SubmitChoreDeps> {
-  const { references, submissions } = await getStores();
-  return { judge: await getJudge(), references, submissions };
+  const { chores, references, submissions } = await getStores();
+  return { judge: await getJudge(), chores, references, submissions };
 }
 
 async function getJudge(): Promise<JudgeClient> {

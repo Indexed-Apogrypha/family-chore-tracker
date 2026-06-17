@@ -24,7 +24,10 @@ persistence seam), **`submissionService`** (orchestrates a child's submission
 → reference lookup → judge → persisted submission+verdict, over the same seam),
 and **`choreService`** (parent-side chore creation behind the same in-memory
 persistence seam; the thin entry point for the multi-chore future) — **all six
-PRD domain modules** — plus the **first Next.js PWA slice** (App Router + React
+PRD domain modules**, with `choreService.getChore` **now wired into both
+`setReference` and `submitChore`** as their chore-existence gate (no more
+opaque-`choreId` treatment; both throw `ChoreNotFoundError` before any write) —
+plus the **first Next.js PWA slice** (App Router + React
 Server Components + Server Actions; a thin in-browser tracer over the domain core
 with camera capture, the verdict view, a streak badge, and a parent history list
 — see "The PWA" below). Also built: the **live Supabase adapters**
@@ -136,7 +139,7 @@ policies.
 | File | Responsibility |
 | --- | --- |
 | `types.ts` | `ChoreReference`, `ReferenceDraft`, and the `ReferenceStore` port (the seam the Supabase adapter sits behind). Reuses the judge core's `ImageInput`. |
-| `referenceService.ts` | `setReference` / `getCurrentReference` / `listReferences` — free functions taking the store first (like `runJudgment(client, input)`). The invariant lives in `setReference`: demote the prior current, then insert the new one as current. |
+| `referenceService.ts` | `setReference(deps, choreId, image)` (deps `{ references, chores }`) / `getCurrentReference` / `listReferences` (these two still take the store first). The invariant lives in `setReference`: `getChore`-validate the chore, then demote the prior current and insert the new one as current. |
 | `memoryStore.ts` | `InMemoryReferenceStore`, the fully-working fake (sibling of `FakeJudgeClient`) — insertion-ordered, with an injectable id/clock for deterministic tests. |
 | `supabaseStore.ts` | `SupabaseReferenceStore`, the live adapter — bytes in Storage + a path on the row, atomic demote+insert via the `set_current_reference` RPC. **Not exported from `index.ts`** (like `gemini.ts`). |
 
@@ -146,9 +149,11 @@ dedup — a re-upload is a deliberate, history-worthy act). The live
 stays **out of `index.ts`**: it keeps bytes in Supabase Storage + a path on the
 row, and makes demote+insert atomic via the `set_current_reference` transaction
 function backed by a partial unique index (`WHERE is_current`) — see "The Supabase
-adapters". `choreId` is an opaque key here; `getChore` (the chore seam) provides
-existence validation, and wiring it into `setReference` is the next integration
-step.
+adapters". `choreId` is **no longer an opaque key**: `setReference` takes a
+`{ references, chores }` deps object (the sibling of `submitChore`'s
+`SubmitChoreDeps`) and calls `getChore` first, so it throws `ChoreNotFoundError`
+before versioning a reference under a chore that doesn't exist. Reads
+(`getCurrentReference`/`listReferences`) stay validation-free.
 
 ## The submission seam (`src/submission/`)
 
@@ -165,7 +170,7 @@ so records feed `computeStreak` with no field mapping.
 | --- | --- |
 | `types.ts` | `SubmissionRecord`, `VerdictRecord` (the judge `Verdict` + a persistence envelope), the drafts, and the `SubmissionStore` port. Reuses `ImageInput`/`Verdict`. |
 | `errors.ts` | `NoCurrentReferenceError` — thrown when a chore has no reference to judge against (sibling of `JudgmentParseError`). |
-| `submissionService.ts` | `submitChore(deps, input)` / `getHistory(store, choreId?)` — free functions over a `{ judge, references, submissions }` deps object. |
+| `submissionService.ts` | `submitChore(deps, input)` / `getHistory(store, choreId?)` — free functions over a `{ judge, chores, references, submissions }` deps object. `submitChore` validates the chore via `getChore` before any write. |
 | `memoryStore.ts` | `InMemorySubmissionStore`, the fully-working fake (sibling of `FakeJudgeClient`/`InMemoryReferenceStore`) — two insertion-ordered arrays, injectable ids/clock. |
 | `supabaseStore.ts` | `SupabaseSubmissionStore`, the live adapter — bytes in Storage, `exif` in a jsonb column, `listVerdicts(choreId)` joins through `submissions`. **Not exported from `index.ts`**. |
 
@@ -179,9 +184,13 @@ failure. The live `SupabaseSubmissionStore` (`./supabaseStore`) is **built** —
 bytes→Storage, EXIF→jsonb, `family_id` now a real per-family FK the adapter stamps
 on both writes (submission + verdict) and filters reads by — and stays **out of
 `index.ts`** like `gemini.ts`/`SupabaseReferenceStore`. `choreId` existence is
-checkable via `getChore` (the chore seam; wiring it in is the next step), while
-`childId` is now the child's **auth-user id** in auth mode (the per-child RLS policy
-keys on it), or omitted in the legacy single-family mode.
+**now validated**: `SubmitChoreDeps` carries a `chores` store and `submitChore`
+calls `getChore` first — ahead of the reference check — so a missing chore throws
+`ChoreNotFoundError` before any write. (Verified live: the smoke's child
+submissions run that `getChore` SELECT under each child's authenticated client, so
+the per-child RLS still admits a child reading the family's chore row.) `childId`
+is now the child's **auth-user id** in auth mode (the per-child RLS policy keys on
+it), or omitted in the legacy single-family mode.
 
 ## The chore seam (`src/chore/`)
 
@@ -196,7 +205,7 @@ owns the `isCurrent` invariant.
 | --- | --- |
 | `types.ts` | `Chore`, `ChoreDraft`, and the `ChoreStore` port (the seam the Supabase adapter sits behind). |
 | `errors.ts` | `ChoreNotFoundError` — thrown by `getChore` when a `choreId` doesn't resolve (sibling of `NoCurrentReferenceError`). |
-| `choreService.ts` | `createChore` / `getChore` / `listChores` — free functions taking the store first (like `setReference`). `createChore` trims and rejects an empty name; **no uniqueness/dedup** (mirroring `referenceService`). |
+| `choreService.ts` | `createChore` / `getChore` / `listChores` — free functions taking the store first (like `getCurrentReference`). `createChore` trims and rejects an empty name; **no uniqueness/dedup** (mirroring `referenceService`). |
 | `memoryStore.ts` | `InMemoryChoreStore`, the fully-working fake (sibling of `InMemoryReferenceStore`) — one insertion-ordered array, injectable id/clock, copy-on-read. |
 | `supabaseStore.ts` | `SupabaseChoreStore`, the live adapter over the `chores` table. **Not exported from `index.ts`**. |
 
@@ -210,9 +219,12 @@ FK the adapter stamps on write and filters reads by (still absent from the domai
 live `SupabaseChoreStore` (`./supabaseStore`) is **built** and stays **out of
 `index.ts`**, like
 `gemini.ts`/`SupabaseReferenceStore`/`SupabaseSubmissionStore`. `getChore` is the
-public "assert a chore exists" API; **wiring it into reference/submission to
-replace their opaque-`choreId` treatment is the natural next integration** (not
-done in this slice — it would change `setReference`/`submitChore` signatures).
+public "assert a chore exists" API, and it is **now wired into both
+`setReference` and `submitChore`** to replace their opaque-`choreId` treatment:
+each validates the chore exists (throwing `ChoreNotFoundError`) before any write.
+This changed their signatures — `setReference` now takes a `{ references, chores }`
+deps object and `SubmitChoreDeps` gained a `chores` store — so the chore seam is no
+longer an isolated island; it's the validation gate the two write paths call.
 
 ## The Supabase adapters (`src/supabase/`, `supabase/`)
 
@@ -451,8 +463,10 @@ Test external behavior (inputs→outputs), not internals, so tests survive
 refactors. Unit-test the deterministic parts — `evaluateVerdict` (policy paths),
 `computeStreak` (crafted event sequences: streaks, breaks, gaps),
 `referenceService` (the `isCurrent` invariant, behaviorally, over
-`InMemoryReferenceStore`), `choreService` (name policy + the `getChore`
-existence assertion + copy-on-read, over `InMemoryChoreStore`), and
+`InMemoryReferenceStore`, **plus the `getChore` gate** — `ChoreNotFoundError` for
+an unreal chore, success for a seeded one; the invariant tests bind a permissive
+chore double so they stay focused on versioning), `choreService` (name policy +
+the `getChore` existence assertion + copy-on-read, over `InMemoryChoreStore`), and
 `parseModelJudgment` (contract enforcement). The
 model's actual visual judgment is non-deterministic and belongs in eval-style
 testing, **not** unit tests; use `FakeJudgeClient` to exercise the pipeline
@@ -467,9 +481,11 @@ fakes stay the tested persistence path.
 `submitChore` with `FakeJudgeClient` + `InMemoryReferenceStore` (seeded via
 `setReference`) + `InMemorySubmissionStore`, asserting the composed behavior
 (records persisted, the current reference used, EXIF/childId threaded, a failed
-judge still records the submission) and that the stored records feed
-`computeStreak` with no mapping — deterministic via injected ids/clock, never
-`Date.now()`.
+judge still records the submission, **the `getChore` gate throws
+`ChoreNotFoundError` before any write for an unreal chore**, and a full
+`createChore → setReference → submitChore` pass over a real `InMemoryChoreStore`)
+and that the stored records feed `computeStreak` with no mapping — deterministic
+via injected ids/clock, never `Date.now()`.
 
 ## Handling children's images
 

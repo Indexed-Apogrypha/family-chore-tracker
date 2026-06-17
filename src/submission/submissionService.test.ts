@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { InMemorySubmissionStore } from './memoryStore';
 import { getHistory, submitChore, type SubmitChoreDeps } from './submissionService';
 import { NoCurrentReferenceError } from './errors';
-import { InMemoryReferenceStore, setReference } from '../reference';
+import { InMemoryReferenceStore, setReference, type ReferenceStore } from '../reference';
+import { InMemoryChoreStore, createChore, ChoreNotFoundError } from '../chore';
+import type { Chore, ChoreDraft, ChoreStore } from '../chore';
 import {
   FakeJudgeClient,
   type ImageInput,
@@ -16,6 +18,33 @@ import { computeStreak } from '../streak';
 /** A tiny labelled image so identity assertions read clearly. */
 function img(tag: string): ImageInput {
   return { data: tag, mimeType: 'image/jpeg' };
+}
+
+/**
+ * A ChoreStore that treats every id as a real chore. The orchestration tests
+ * below are about composing the seams, NOT chore validation (covered by
+ * choreService's own tests + the "chore validation" block at the bottom), so they
+ * bind this permissive double and keep their literal chore ids — including the
+ * `NoCurrentReferenceError` case, where the chore must pass validation so the
+ * MISSING-reference path is the one under test.
+ */
+class AnyChoreStore implements ChoreStore {
+  async add({ name }: ChoreDraft): Promise<Chore> {
+    return { id: `chore-${name}`, name, createdAt: '2026-06-01T00:00:00.000Z' };
+  }
+  async getById(id: string): Promise<Chore> {
+    return { id, name: 'Tidy room', createdAt: '2026-06-01T00:00:00.000Z' };
+  }
+  async list(): Promise<Chore[]> {
+    return [];
+  }
+}
+const anyChores = new AnyChoreStore();
+
+/** `setReference` bound to the permissive chore store — these tests seed
+ *  references for orchestration, not to exercise `getChore` validation. */
+function setRef(references: ReferenceStore, choreId: string, image: ImageInput) {
+  return setReference({ references, chores: anyChores }, choreId, image);
 }
 
 /** Captures the JudgeInput it was called with, so we can assert what was judged. */
@@ -49,14 +78,14 @@ function setup(judge: JudgeClient) {
     clock: () => '2026-06-01T00:00:00.000Z',
   });
   const submissions = new InMemorySubmissionStore();
-  const deps: SubmitChoreDeps = { judge, references, submissions };
+  const deps: SubmitChoreDeps = { judge, chores: anyChores, references, submissions };
   return { deps, references, submissions };
 }
 
 describe('submitChore', () => {
   it('records a submission and a confirmed pass on the happy path', async () => {
     const { deps, references, submissions } = setup(new FakeJudgeClient(CLEAN_PASS));
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     const { submission, verdict } = await submitChore(deps, {
       choreId: 'c1',
@@ -75,7 +104,7 @@ describe('submitChore', () => {
 
   it('records a confirmed fail with its deviations', async () => {
     const { deps, references } = setup(new FakeJudgeClient(MESSY_FAIL));
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     const { verdict } = await submitChore(deps, {
       choreId: 'c1',
@@ -90,7 +119,7 @@ describe('submitChore', () => {
 
   it('persists a needs_review verdict for an uncertain judgment', async () => {
     const { deps, references, submissions } = setup(new FakeJudgeClient(BLURRY_UNCERTAIN));
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     await submitChore(deps, { choreId: 'c1', choreName: 'Tidy room', image: img('sub') });
 
@@ -117,8 +146,8 @@ describe('submitChore', () => {
   it('judges against the current reference and the submitted image', async () => {
     const spy = new SpyJudgeClient(CLEAN_PASS);
     const { deps, references } = setup(spy);
-    await setReference(references, 'c1', img('old'));
-    await setReference(references, 'c1', img('new'));
+    await setRef(references, 'c1', img('old'));
+    await setRef(references, 'c1', img('new'));
 
     await submitChore(deps, { choreId: 'c1', choreName: 'Tidy room', image: img('sub') });
 
@@ -129,7 +158,7 @@ describe('submitChore', () => {
 
   it('persists EXIF when supplied and defaults it to null when omitted', async () => {
     const { deps, references, submissions } = setup(new FakeJudgeClient(CLEAN_PASS));
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     await submitChore(deps, {
       choreId: 'c1',
@@ -146,7 +175,7 @@ describe('submitChore', () => {
 
   it('threads an opaque childId through, leaving it undefined when omitted', async () => {
     const { deps, references, submissions } = setup(new FakeJudgeClient(CLEAN_PASS));
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     await submitChore(deps, {
       choreId: 'c1',
@@ -163,7 +192,7 @@ describe('submitChore', () => {
 
   it('keeps an auditable submission when judging fails, with no verdict', async () => {
     const { deps, references, submissions } = setup(new ThrowingJudgeClient());
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     await expect(
       submitChore(deps, { choreId: 'c1', choreName: 'Tidy room', image: img('sub') }),
@@ -186,11 +215,11 @@ describe('submitChore', () => {
     const submissions = new InMemorySubmissionStore({
       clock: scriptedClock(days.flatMap((d) => [`${d}T12:00:00.000Z`, `${d}T12:00:00.000Z`])),
     });
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     const submit = (judgment: ModelJudgment) =>
       submitChore(
-        { judge: new FakeJudgeClient(judgment), references, submissions },
+        { judge: new FakeJudgeClient(judgment), references, submissions, chores: anyChores },
         { choreId: 'c1', choreName: 'Tidy room', image: img('s') },
       );
 
@@ -213,18 +242,18 @@ describe('getHistory', () => {
       clock: () => '2026-06-01T00:00:00.000Z',
     });
     const submissions = new InMemorySubmissionStore();
-    await setReference(references, 'c1', img('ref'));
+    await setRef(references, 'c1', img('ref'));
 
     await submitChore(
-      { judge: new FakeJudgeClient(CLEAN_PASS), references, submissions },
+      { judge: new FakeJudgeClient(CLEAN_PASS), references, submissions, chores: anyChores },
       { choreId: 'c1', choreName: 'Tidy room', image: img('a') },
     );
     await submitChore(
-      { judge: new FakeJudgeClient(MESSY_FAIL), references, submissions },
+      { judge: new FakeJudgeClient(MESSY_FAIL), references, submissions, chores: anyChores },
       { choreId: 'c1', choreName: 'Tidy room', image: img('b') },
     );
     await submitChore(
-      { judge: new ThrowingJudgeClient(), references, submissions },
+      { judge: new ThrowingJudgeClient(), references, submissions, chores: anyChores },
       { choreId: 'c1', choreName: 'Tidy room', image: img('c') },
     ).catch(() => undefined);
 
@@ -240,15 +269,15 @@ describe('getHistory', () => {
       clock: () => '2026-06-01T00:00:00.000Z',
     });
     const submissions = new InMemorySubmissionStore();
-    await setReference(references, 'c1', img('r1'));
-    await setReference(references, 'c2', img('r2'));
+    await setRef(references, 'c1', img('r1'));
+    await setRef(references, 'c2', img('r2'));
 
     await submitChore(
-      { judge: new FakeJudgeClient(CLEAN_PASS), references, submissions },
+      { judge: new FakeJudgeClient(CLEAN_PASS), references, submissions, chores: anyChores },
       { choreId: 'c1', choreName: 'Tidy room', image: img('a') },
     );
     await submitChore(
-      { judge: new FakeJudgeClient(MESSY_FAIL), references, submissions },
+      { judge: new FakeJudgeClient(MESSY_FAIL), references, submissions, chores: anyChores },
       { choreId: 'c2', choreName: 'Make bed', image: img('b') },
     );
 
@@ -256,5 +285,44 @@ describe('getHistory', () => {
     expect((await submissions.listVerdicts('c1'))[0]?.result).toBe('pass');
     expect((await submissions.listVerdicts('c2'))[0]?.result).toBe('fail');
     expect(await getHistory(submissions, 'c2')).toHaveLength(1);
+  });
+});
+
+describe('submitChore chore validation', () => {
+  it('throws ChoreNotFoundError for an unknown chore, persisting nothing', async () => {
+    const references = new InMemoryReferenceStore({ clock: () => '2026-06-01T00:00:00.000Z' });
+    const submissions = new InMemorySubmissionStore();
+    const chores = new InMemoryChoreStore(); // empty — the chore doesn't exist
+    const deps: SubmitChoreDeps = {
+      judge: new FakeJudgeClient(CLEAN_PASS),
+      chores,
+      references,
+      submissions,
+    };
+
+    await expect(
+      submitChore(deps, { choreId: 'ghost', choreName: 'Tidy room', image: img('sub') }),
+    ).rejects.toBeInstanceOf(ChoreNotFoundError);
+
+    // Validation precedes any write — neither the submission nor a verdict lands.
+    expect(await submissions.listSubmissions()).toHaveLength(0);
+    expect(await submissions.listVerdicts()).toHaveLength(0);
+  });
+
+  it('composes over a real seeded chore: createChore → setReference → submitChore', async () => {
+    const chores = new InMemoryChoreStore();
+    const references = new InMemoryReferenceStore({ clock: () => '2026-06-01T00:00:00.000Z' });
+    const submissions = new InMemorySubmissionStore();
+    const chore = await createChore(chores, 'Tidy room');
+    await setReference({ references, chores }, chore.id, img('ref'));
+
+    const { submission, verdict } = await submitChore(
+      { judge: new FakeJudgeClient(CLEAN_PASS), chores, references, submissions },
+      { choreId: chore.id, choreName: chore.name, image: img('sub') },
+    );
+
+    expect(submission.choreId).toBe(chore.id);
+    expect(verdict.result).toBe('pass');
+    expect(verdict.submissionId).toBe(submission.id);
   });
 });
