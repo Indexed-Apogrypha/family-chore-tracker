@@ -56,7 +56,13 @@ as `gemini.ts`/the adapters). And now the **Storage object RLS** slice (migratio
 path (`<family_id>/…`) and Storage I/O rides the authenticated client, so the
 per-family RLS that already guards the DB rows now guards the bytes too (PRD User
 Story 17) — scaffold-&-defer like the other migrations (SQL review-only, not
-runtime-verified). Not yet built (see PRD): an offline service worker, and
+runtime-verified). Also built: the **offline service worker** (`public/sw.js` +
+`ServiceWorkerRegistrar` + the `/offline` fallback) — app-shell offline support
+(navigations fall back to a branded offline page; hashed static assets serve
+cache-first), deliberately **not** an offline submission queue (judging needs the
+network). Verified by the keyless `npm run build` + a `npm start` round-trip
+(`/sw.js` served no-store with the right MIME; `/offline` renders). Not yet built
+(see PRD): an offline **submission queue** (queue + replay photo bytes), and
 `family_id` `NOT NULL` + backfill.
 
 ## Architecture: the judging core (`src/judge/`)
@@ -395,7 +401,10 @@ client import is a build error. Client components import the core's **types only
 | `app/actions.ts` | `setReferenceAction` / `submitChoreAction` (`'use server'`) — read the `<input capture>` file from FormData, convert to the core's `ImageInput` (base64, no `data:` prefix), and call `setReference` / `submitChore`. Map `NoCurrentReferenceError` to a friendly signal; return only serializable data. |
 | `app/{page,parent/page,child/page,parent/history/page,login/page,parent/children/page}.tsx` | Server Components reading the container directly, `dynamic = 'force-dynamic'`. In `authMode()` each guards with `requireParent`/`requireChild`/`getIdentity`; in legacy mode the guards are transparent. |
 | `app/components/*` + form clients | `ReferenceForm` / `SubmitForm` / `login/LoginForms` / `parent/children/ProvisionChildForm` (`'use client'`, `useActionState`); presentational `VerdictCard` / `StreakBadge` / `PhotoThumb`; `Nav` is now an async Server Component, role-aware in auth mode (+ a sign-out form). |
-| `app/manifest.ts` | The web app manifest (installable PWA); no service worker yet. |
+| `app/manifest.ts` | The web app manifest (installable PWA), now paired with the offline service worker below. |
+| `public/sw.js` | The **offline service worker** (hand-written, dependency-free). GET + same-origin only: navigations are network-first with a fallback to the cached `/offline`; `/_next/static/*` is cache-first; a small shell allowlist is stale-while-revalidate; **everything else (Server Action POSTs, RSC/dynamic GETs) is never cached**, so no stale or cross-user authenticated response is served. Versioned cache (`chore-shell-v1`) with old-cache cleanup on activate. |
+| `app/components/ServiceWorkerRegistrar.tsx` | `'use client'`; registers `/sw.js` (`scope:'/'`, `updateViaCache:'none'`) on load, **production only** (a dev SW fights HMR). Mounted in `layout.tsx`. Renders nothing. |
+| `app/offline/page.tsx` | The branded offline fallback the SW serves for navigations — static, auth-free, no domain data (judging needs the network). `next.config.mjs` adds the `/sw.js` response headers (no-store + correct MIME + `Service-Worker-Allowed`). |
 
 **Three deliberate bridges, each swapped behind its env with no caller changes:**
 

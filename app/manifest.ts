@@ -2,8 +2,10 @@ import type { MetadataRoute } from 'next';
 
 /**
  * Web app manifest → an installable, standalone PWA shell (PRD: "mobile-first
- * PWA"). A real offline service worker is deferred — the PRD has no offline
- * requirement for v1.
+ * PWA"). Paired with the offline service worker (`public/sw.js`, registered by
+ * `ServiceWorkerRegistrar`): the installed app opens offline to the `/offline`
+ * fallback and serves hashed static assets from cache. Offline *submission*
+ * (queue + replay) is a deliberate non-goal — judging needs the network.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
