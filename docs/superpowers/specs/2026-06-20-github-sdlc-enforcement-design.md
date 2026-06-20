@@ -99,8 +99,11 @@ Squash-only (`allow_merge_commit:false`, `allow_rebase_merge:false`),
 3. Apply the ruleset **without** `claude-review` required; confirm the 6 CI checks
    gate the PR and go green.
 4. Merge the bootstrapping PR through the gate (squash). `main` now has the workflows.
-5. Set `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`); confirm `claude-review`
-   goes green once.
+5. Wire `claude-review`: set `ANTHROPIC_API_KEY` (or `CLAUDE_CODE_OAUTH_TOKEN`) AND
+   install the Claude GitHub App on the repo. The action authenticates its GitHub
+   operations through OIDC + the app even when the model uses an API key, so the
+   workflow sets `id-token: write` and the app install is required. Confirm
+   `claude-review` goes green once.
 6. Add `claude-review` to the required checks → architecture fully sealed.
 
 `claude-review` is wired last on purpose: requiring a check that can't yet pass
