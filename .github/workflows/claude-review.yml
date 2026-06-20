@@ -39,20 +39,22 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Subscription alternative (use ONE): obtain via `claude setup-token`.
           # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
+          # No track_progress: that agentic/todo mode prevents Claude from emitting
+          # structured_output (the action then errors with "--json-schema was provided
+          # but Claude did not return structured_output"). The documented PR-gating
+          # pattern is a plain prompt that names the schema fields + --json-schema.
           prompt: |
             Review the diff of this pull request for correctness bugs, security
-            issues, secret/credential leakage, and obvious regressions. Post
-            specific inline comments for anything blocking. Be pragmatic: style
-            nits and subjective preferences are NOT blocking.
+            issues, secret/credential leakage, and obvious regressions. Be
+            pragmatic: style nits and subjective preferences are NOT blocking.
 
-            Then return your verdict via the provided JSON schema:
-            - approved=true only if there are no blocking issues.
-            - approved=false if there is ANY blocking issue, listing each one in
-              blocking_issues.
+            Return a JSON object with exactly these fields:
+            - approved (boolean): true ONLY if there are no blocking issues.
+            - blocking_issues (array of strings): one entry per blocking issue
+              (empty when approved is true).
+            - summary (string): a one-paragraph summary of the review.
           claude_args: |
             --max-turns 25
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
             --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"blocking_issues":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}},"required":["approved"]}'
 
       - name: Enforce verdict (fail-closed)
