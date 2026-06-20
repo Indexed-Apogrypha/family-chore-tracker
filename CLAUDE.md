@@ -447,12 +447,13 @@ client import is a build error. Client components import the core's **types only
 | `app/actions.ts` | `setReferenceAction` / `submitChoreAction` (`'use server'`) — read the `<input capture>` file from FormData, convert to the core's `ImageInput` (base64, no `data:` prefix), and call `setReference` / `submitChore`. Map `NoCurrentReferenceError` to a friendly signal; return only serializable data. |
 | `app/{page,parent/page,child/page,parent/history/page,login/page,parent/children/page}.tsx` | Server Components reading the container directly, `dynamic = 'force-dynamic'`. In `authMode()` each guards with `requireParent`/`requireChild`/`getIdentity`; in legacy mode the guards are transparent. |
 | `app/components/*` + form clients | `ReferenceForm` / `SubmitForm` / `login/LoginForms` / `parent/children/ProvisionChildForm` (`'use client'`, `useActionState`); presentational `VerdictCard` / `StreakBadge` / `PhotoThumb`; `Nav` is now an async Server Component, role-aware in auth mode (+ a sign-out form). |
-| `app/manifest.ts` | The web app manifest (installable PWA), now paired with the offline service worker below. |
+| `app/manifest.ts` + `public/*.png` | The web app manifest (installable PWA), paired with the offline service worker below. Ships raster icons (`icon-192/512`, a maskable 512, an `apple-touch-icon` — iOS ignores SVG) generated from `public/icon.svg` by `scripts/generate-icons.mjs` (`npm run icons`): a dependency-free, supersampled pure-Node rasterizer + PNG encoder, since the box has no SVG rasterizer. The PNGs are committed so the Vercel build just serves them. |
+| `lib/client/downscaleImage.ts` | Client-side photo downscaling (`'use client'` edge): re-encodes a captured photo to a ≤1600px JPEG in the browser before it hits the Server Action — fast on cellular, under the 8 MB body cap, and bakes in EXIF orientation. Defensive — any failure/unsupported path returns the original file (a capture is never lost to a resize). Used by `ReferenceForm`/`SubmitForm`/`OfflineCapture`, which now intercept submit, downscale, then dispatch the action via `startTransition` (so `useActionState`'s `isPending` tracks it). |
 | `public/sw.js` | The **offline service worker** (hand-written, dependency-free). GET + same-origin only: navigations are network-first with a fallback to the cached `/offline`; `/_next/static/*` is cache-first; a small shell allowlist is stale-while-revalidate; **everything else (Server Action POSTs, RSC/dynamic GETs) is never cached**, so no stale or cross-user authenticated response is served. Versioned cache (`chore-shell-v1`) with old-cache cleanup on activate. |
 | `app/components/ServiceWorkerRegistrar.tsx` | `'use client'`; registers `/sw.js` (`scope:'/'`, `updateViaCache:'none'`) on load, **production only** (a dev SW fights HMR). Mounted in `layout.tsx`. Renders nothing. |
 | `app/offline/page.tsx` | The branded offline fallback the SW serves for navigations — static, auth-free, no domain data. Now also hosts `OfflineCapture` + `QueueStatus` so a child can capture offline from a cold-opened app. `next.config.mjs` adds the `/sw.js` response headers (no-store + correct MIME + `Service-Worker-Allowed`). |
 | `lib/offline/` | **Offline submission queue, Phase 1** (design: `docs/offline-queue.md`). A `QueueStore` port (`types.ts`) with an `InMemoryQueueStore` (tested) + an `IndexedDbQueueStore` (the browser edge — multi-MB photo Blobs; untested like `gemini.ts`), `drainQueue` (pure FIFO orchestration: deliver each → dequeue-on-confirm → stop on network failure; unit-tested), and a browser `client.ts` facade (enqueue/count/drain + a change event). **The domain core + `submitChoreAction` are unchanged** — the drain replays the *same* action, which resolves chore + child server-side. Phase 2 seams recorded: `capturedAt` (fair streak bucketing), `clientId` (idempotency), `status` (retry/backoff), Background Sync via a Route Handler. |
-| `app/components/{QueueStatus,OfflineCapture}.tsx` + `SubmitForm` | `'use client'`. `SubmitForm` queues the photo when `navigator.onLine` is false (else the action runs as usual); `OfflineCapture` is the cold-open capture form on `/offline`; `QueueStatus` (on `/child` + `/offline`) drains on load + each `online` event and `router.refresh()`es so synced verdicts/streak appear. |
+| `app/components/{QueueStatus,OfflineCapture}.tsx` + `SubmitForm` | `'use client'`. `SubmitForm` downscales the photo, then queues it when `navigator.onLine` is false (else dispatches the action); `OfflineCapture` is the cold-open capture form on `/offline`; `QueueStatus` (on `/child` + `/offline`) drains on load + each `online` event and `router.refresh()`es so synced verdicts/streak appear. |
 
 **Three deliberate bridges, each swapped behind its env with no caller changes:**
 
@@ -495,6 +496,7 @@ npm start         # serve the production build
 npm test          # vitest — unit tests for policy, parsing, and the pipeline
 npm run typecheck # tsc for the core (tsconfig.core.json) AND the app (tsconfig.json)
 npm run demo      # runs the tracer bullet end-to-end with the fake judge
+npm run icons     # regenerate the PWA PNG icons from public/icon.svg (commit the output)
 npm run smoke:supabase       # live service-role round-trip of the 3 adapters (needs SUPABASE_* in .env)
 npm run smoke:supabase-auth  # live per-family/per-child/Storage RLS enforcement (also needs SUPABASE_ANON_KEY)
 npm run smoke:auth-flow      # browser login/session/gating via the Next app (needs a running authMode server)
@@ -505,6 +507,7 @@ GEMINI_API_KEY=... npm run demo -- ref.jpg sub.jpg "Tidy room"
 # 0003_auth.sql, 0004_storage_rls.sql, 0005_harden_function_search_path.sql,
 # 0006_family_id_not_null.sql, 0007_storage_bucket.sql) — 0007 creates the private bucket —
 # then `npm run smoke:supabase` to verify the round-trip. Unset → in-memory.
+# Demoing on real phones (Vercel + Supabase Auth + a live vision key): see DEPLOY.md.
 # Live Auth (optional): also set SUPABASE_ANON_KEY and turn OFF "Confirm email" in the
 # Supabase Auth settings → login + per-family RLS turn on. Unset → single-family, no login.
 # Then `npm run smoke:supabase-auth` proves RLS isolation under real authenticated JWTs,
