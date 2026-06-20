@@ -3,23 +3,23 @@ name: claude-review
 # Automated reviewer gate. The job name `claude-review` IS the required status
 # check registered in the protect-main ruleset.
 #
-# IMPORTANT — this gate is fail-CLOSED by design. anthropics/claude-code-action
-# posts review comments but exits 0 even on critical findings, so relying on the
-# action's own exit code would be a FAKE gate (green on serious bugs). Instead
-# Claude returns a structured verdict and the "Enforce verdict" step turns a
-# blocking verdict — or any failure to produce a verdict — into a failed check.
+# Implemented as a direct, deterministic Anthropic Messages API call rather than
+# via anthropics/claude-code-action. The action's --json-schema/structured_output
+# proved unreliable for a pass/fail gate (it errored "did not return
+# structured_output" even on a clean run) and it self-skips on PRs that modify its
+# own workflow. This calls the API with a FORCED tool_use (`tool_choice`), so a
+# structured JSON verdict is guaranteed. The gate is fail-CLOSED: any missing or
+# invalid verdict — or `approved != true` — blocks the merge.
 #
-# Uses `pull_request` (NOT pull_request_target): the PR code never runs with the
-# secret. Requires a repo secret ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN).
+# Uses `pull_request` (NOT pull_request_target): PR code never runs with the
+# secret. Requires the repo secret ANTHROPIC_API_KEY.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: write
-  id-token: write # required: claude-code-action fetches a GitHub OIDC token for its app-based GitHub auth, even when the model uses an API key
+  pull-requests: read
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -30,53 +30,72 @@ jobs:
     name: claude-review
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Claude review
-        id: review
-        uses: anthropics/claude-code-action@51705da45eecce209d4700538bf8377d5b5fc695 # v1
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Subscription alternative (use ONE): obtain via `claude setup-token`.
-          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # No track_progress: that agentic/todo mode prevents Claude from emitting
-          # structured_output (the action then errors with "--json-schema was provided
-          # but Claude did not return structured_output"). The documented PR-gating
-          # pattern is a plain prompt that names the schema fields + --json-schema.
-          prompt: |
-            Review the diff of this pull request for correctness bugs, security
-            issues, secret/credential leakage, and obvious regressions. Be
-            pragmatic: style nits and subjective preferences are NOT blocking.
-
-            Return a JSON object with exactly these fields:
-            - approved (boolean): true ONLY if there are no blocking issues.
-            - blocking_issues (array of strings): one entry per blocking issue
-              (empty when approved is true).
-            - summary (string): a one-paragraph summary of the review.
-          claude_args: |
-            --max-turns 25
-            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"blocking_issues":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}},"required":["approved"]}'
-
-      - name: Enforce verdict (fail-closed)
-        if: always()
+      - name: Review the diff with Claude (forced structured verdict)
         env:
-          OUT: ${{ steps.review.outputs.structured_output }}
-          OUTCOME: ${{ steps.review.outcome }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          if [ "${OUTCOME}" != "success" ]; then
-            echo "::error::Claude review step did not complete — blocking merge (fail-closed)."
+
+          # 1) Fetch the PR diff (bounded so the request stays reasonable).
+          diff="$(gh pr diff "$PR" | head -c 200000)"
+          if [ -z "$diff" ]; then
+            echo "Empty diff — nothing to review."
+            exit 0
+          fi
+
+          # 2) Build the request. tool_choice forces Claude to call submit_verdict,
+          #    which guarantees a structured JSON verdict (no free-text parsing).
+          req="$(jq -n --arg diff "$diff" '{
+            model: "claude-sonnet-4-6",
+            max_tokens: 2048,
+            tool_choice: { type: "tool", name: "submit_verdict" },
+            tools: [{
+              name: "submit_verdict",
+              description: "Submit the review verdict for this pull request.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  approved: { type: "boolean", description: "true ONLY if there are no blocking issues" },
+                  blocking_issues: { type: "array", items: { type: "string" }, description: "one entry per blocking issue; empty when approved" },
+                  summary: { type: "string", description: "one-paragraph summary of the review" }
+                },
+                required: ["approved", "blocking_issues", "summary"]
+              }
+            }],
+            messages: [{
+              role: "user",
+              content: ("Review the following pull request diff for correctness bugs, security issues, secret or credential leakage, and obvious regressions. Be pragmatic: style nits and subjective preferences are NOT blocking. Submit your verdict via the submit_verdict tool.\n\n--- DIFF ---\n" + $diff)
+            }]
+          }')"
+
+          # 3) Call the Messages API (capture body even on HTTP error).
+          resp="$(curl -sS --fail-with-body https://api.anthropic.com/v1/messages \
+            -H "x-api-key: ${ANTHROPIC_API_KEY}" \
+            -H "anthropic-version: 2023-06-01" \
+            -H "content-type: application/json" \
+            -d "$req")" || {
+              echo "::error::Anthropic API call failed — blocking (fail-closed). Response:"
+              echo "${resp:-}" | head -c 2000
+              exit 1
+            }
+
+          # 4) Extract the forced verdict. Fail-closed on anything unexpected.
+          verdict="$(echo "$resp" | jq -c 'first(.content[]? | select(.type == "tool_use") | .input)' 2>/dev/null || true)"
+          if [ -z "$verdict" ] || [ "$verdict" = "null" ]; then
+            echo "::error::No structured verdict returned — blocking (fail-closed). Response:"
+            echo "$resp" | head -c 2000
             exit 1
           fi
-          # Parse the verdict exactly once. ANY parse failure, empty output, or a
-          # missing / non-true 'approved' field defaults to BLOCK — the gate stays
-          # fail-closed regardless of pipefail semantics or future edits.
-          verdict="$(jq -r 'if .approved == true then "approve" else "block" end' <<<"${OUT:-}" 2>/dev/null || echo block)"
-          if [ "${verdict}" = "approve" ]; then
-            echo "Claude approved this PR."
-            jq -r '.summary // empty' <<<"${OUT}" 2>/dev/null || true
+
+          echo "$verdict" | jq -r '"Summary: " + (.summary // "(none)")'
+          if [ "$(echo "$verdict" | jq -r '.approved')" = "true" ]; then
+            echo "✅ Claude approved this PR."
           else
-            echo "::error::Claude did not approve this PR (or produced no valid verdict). Blocking issues:"
-            jq -r '.blocking_issues[]? | "  - " + .' <<<"${OUT:-}" 2>/dev/null || true
+            echo "::error::❌ Claude blocked this PR:"
+            echo "$verdict" | jq -r '.blocking_issues[]? | "  - " + .'
             exit 1
           fi
