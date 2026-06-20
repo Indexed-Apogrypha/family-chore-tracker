@@ -1,0 +1,59 @@
+# ---- Secrets / environment ----
+# NEVER commit real keys. .env here holds live Anthropic/Gemini/Supabase secrets.
+.env
+.env.*
+!.env.example
+*.local
+
+# ---- Node ----
+node_modules/
+.npm/
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# ---- Build output ----
+dist/
+build/
+out/
+.next/
+.turbo/
+.vercel/
+*.tsbuildinfo
+
+# ---- Test / coverage ----
+coverage/
+.nyc_output/
+*.lcov
+
+# ---- Logs ----
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Supabase ----
+# Keep migrations and config tracked; ignore local stack state + temp files.
+.branches/
+.temp/
+supabase/.branches/
+supabase/.temp/
+
+# ---- Editor / OS ----
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# ---- Claude Code ----
+# Share project settings; keep personal overrides local.
+.claude/settings.local.json
