@@ -1,8 +1,8 @@
 # GitHub SDLC enforcement — design
 
 - **Date:** 2026-06-20
-- **Repo:** `Indexed-Apogrypha/family-chore-tracker` (private, personal account)
-- **Status:** Approved, implementing
+- **Repo:** `Indexed-Apogrypha/family-chore-tracker` (**public**, personal account — see "Went public" below)
+- **Status:** Implemented — 6 of 7 gates live and enforced; `claude-review` pending the Claude GitHub App install
 
 ## Goal
 
@@ -48,10 +48,20 @@ These were verified against current GitHub / action docs before implementation.
 - **Private repos on a free personal plan don't get GitHub Advanced Security.** No
   native secret scanning / CodeQL. We use **gitleaks** (free for personal accounts,
   run via its official image) and **Dependabot** (free on all repos) instead.
-- **Environment protection rules aren't enforced on a free personal private repo.**
-  So the deploy gate's authoritative enforcement is the workflow condition
-  `if: github.ref == 'refs/heads/main'`; the `production` environment is layered on
-  and becomes a real reviewer gate only on GitHub Pro/Team/Enterprise.
+- **Branch rulesets, branch protection, and environment protection rules require a
+  PUBLIC repo or a paid plan (Pro/Team/Enterprise).** On a free *private* personal
+  repo, `POST /repos/.../rulesets` returns 403 ("Upgrade to GitHub Pro or make this
+  repository public"). This is the load-bearing constraint — the entire enforcement
+  layer was unbuildable on the repo's original free-private status. Resolved by
+  making the repo public (see "Went public" below), which unlocks rulesets and the
+  protected `production` environment at no cost. The deploy gate's authoritative
+  enforcement remains the workflow condition `if: github.ref == 'refs/heads/main'`.
+- **The Claude review action needs the Claude GitHub App installed**, even when the
+  model authenticates via `ANTHROPIC_API_KEY`. The action's GitHub-side operations
+  authenticate through an OIDC token exchanged for a Claude App installation token,
+  so the workflow needs `id-token: write` AND the app installed on the repo. (An
+  earlier research pass wrongly concluded no app was needed; live testing corrected
+  it.)
 
 ## Components (file inventory)
 
@@ -92,6 +102,16 @@ Squash-only (`allow_merge_commit:false`, `allow_rebase_merge:false`),
 `delete_branch_on_merge:true`, `allow_auto_merge:true`,
 `squash_merge_commit_title:PR_TITLE` + `squash_merge_commit_message:PR_BODY`.
 
+## Went public (2026-06-20)
+
+Branch rulesets are unavailable on free private repos, so enforcement required
+either GitHub Pro or making the repo public. The repo was **made public**. Before
+flipping, the full history — 68 commits across every branch, including `ABANDONED/*`
+— was scanned for committed secrets (key formats, JWTs, connection strings,
+suspicious filenames) and came back **clean**; the live Anthropic/Gemini/Supabase
+keys live only in the gitignored `.env` and were never committed. The `ABANDONED/*`
+branches (old app code, no secrets) are public too and were left in place.
+
 ## Rollout (dogfooded; sequenced to avoid self-lockout)
 
 1. Land all files on branch `ci/github-sdlc`; open a PR to `main`.
@@ -109,6 +129,12 @@ Squash-only (`allow_merge_commit:false`, `allow_rebase_merge:false`),
 `claude-review` is wired last on purpose: requiring a check that can't yet pass
 (no secret) would block every merge, including the fix.
 
+**Status (2026-06-20):** steps 1–4 done — the 6-check ruleset is active and a
+direct push to `main` is rejected (`GH013: Changes must be made through a pull
+request`); the bootstrap PR (#28) was merged through the gate. Steps 5–6 pending
+the Claude GitHub App install, after which `claude-review` becomes the 7th
+required check via `.github/setup/apply-governance.sh`.
+
 ## Break-glass
 
 No bypass actors — rules apply to the owner. In a genuine emergency the owner can
@@ -119,6 +145,7 @@ and re-enable. That administrative action is itself logged. Prefer fixing the ga
 
 - Wire `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` (env-scoped) when the
   app exists; disable Vercel native Git auto-deploy so the GitHub gate stays authoritative.
-- Consider SHA-pinning the security-relevant actions (Dependabot keeps them fresh).
+- SHA-pinned the gate actions (`claude-code-action`, `gitleaks`); consider pinning
+  the remaining first-party actions too (Dependabot keeps them fresh).
 - Consider `required_signatures` once commit signing is configured locally + for bots.
 - Add a real `lint` script (e.g. ESLint) — the `lint` gate no-ops until then.
