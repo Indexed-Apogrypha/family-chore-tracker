@@ -1,0 +1,58 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The more precisely you describe it, the faster it gets fixed.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A clear, specific description of the bug.
+      placeholder: When I tap "Submit chore photo", the app shows a blank screen.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      placeholder: The photo uploads and the chore is marked pending review.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps. Include sample data or a chore/photo if relevant.
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the app?
+      options:
+        - Chore submission / photos
+        - Vision judge (Anthropic/Gemini)
+        - Auth / families
+        - Supabase / persistence
+        - Offline / sync queue
+        - UI / PWA
+        - Build / CI / tooling
+        - Other / not sure
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Device, OS, browser, and whether it was online or offline.
+      placeholder: iPhone 15, iOS 18, Safari, offline.
+    validations:
+      required: false

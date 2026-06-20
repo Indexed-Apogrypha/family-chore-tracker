@@ -1,0 +1,16 @@
+# Normalize line endings to LF in the repository so shell scripts and CI
+# workflows are never checked out with CRLF (which breaks bash on Linux runners).
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binary assets Git must not touch.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
