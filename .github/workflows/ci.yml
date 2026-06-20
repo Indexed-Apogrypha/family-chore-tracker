@@ -70,7 +70,7 @@ jobs:
       # history only, so the local untracked .env is never read.
       - name: gitleaks (scan committed history for secrets)
         run: |
-          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
             git --redact --exit-code 1 /repo
 
   # PR-title lint: the title becomes the squash commit message, so enforcing

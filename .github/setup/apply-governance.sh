@@ -31,17 +31,21 @@ gh api --method PATCH "repos/$REPO" \
 echo "    done."
 
 echo "==> Protected 'production' environment (main-only; reviewer enforced on Pro+)"
-OWNER_ID="$(gh api user --jq .id)"
-gh api --method PUT "repos/$REPO/environments/production" \
-  -F wait_timer=0 \
-  -f "reviewers[][type]=User" \
-  -F "reviewers[][id]=$OWNER_ID" \
-  -F "deployment_branch_policy[protected_branches]=false" \
-  -F "deployment_branch_policy[custom_branch_policies]=true" >/dev/null 2>&1 \
-  && gh api --method POST "repos/$REPO/environments/production/deployment-branch-policies" \
-       -f name=main >/dev/null 2>&1 \
-  && echo "    environment configured." \
-  || echo "    (environment rules not enforced on this plan — relying on workflow 'if: main' gate)"
+OWNER_ID="$(gh api user --jq .id 2>/dev/null || true)"
+if [ -z "${OWNER_ID:-}" ]; then
+  echo "    could not resolve owner id — skipping environment setup (workflow 'if: main' gate still applies)"
+else
+  gh api --method PUT "repos/$REPO/environments/production" \
+    -F wait_timer=0 \
+    -f "reviewers[][type]=User" \
+    -F "reviewers[][id]=$OWNER_ID" \
+    -F "deployment_branch_policy[protected_branches]=false" \
+    -F "deployment_branch_policy[custom_branch_policies]=true" >/dev/null 2>&1 \
+    && gh api --method POST "repos/$REPO/environments/production/deployment-branch-policies" \
+         -f name=main >/dev/null 2>&1 \
+    && echo "    environment configured." \
+    || echo "    (environment rules not enforced on this plan — relying on workflow 'if: main' gate)"
+fi
 
 echo "==> Branch ruleset 'protect-main' (create or update)"
 RID="$(gh api "repos/$REPO/rulesets" --jq '.[] | select(.name=="protect-main") | .id' 2>/dev/null | head -n1)"

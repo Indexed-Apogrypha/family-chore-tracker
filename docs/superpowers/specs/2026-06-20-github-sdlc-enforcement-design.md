@@ -79,7 +79,7 @@ the owner too). Rules:
 - `required_linear_history` + `allowed_merge_methods: ["squash"]` — clean, linear,
   squash-only history; the PR title becomes the commit message.
 - `pull_request` — PR mandatory; 0 approvals; dismiss stale reviews on push;
-  require conversation resolution; no code-owner / last-push approval (solo-safe).
+  no code-owner / last-push approval (solo-safe).
 - `required_status_checks` (strict / up-to-date), pinned to GitHub Actions:
   `lint`, `typecheck`, `test`, `build`, `secret-scan`, `pr-title`, `claude-review`.
 

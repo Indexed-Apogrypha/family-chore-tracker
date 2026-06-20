@@ -33,7 +33,7 @@ jobs:
 
       - name: Claude review
         id: review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@51705da45eecce209d4700538bf8377d5b5fc695 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Subscription alternative (use ONE): obtain via `claude setup-token`.
@@ -61,19 +61,19 @@ jobs:
           OUTCOME: ${{ steps.review.outcome }}
         run: |
           set -euo pipefail
-          if [ "$OUTCOME" != "success" ]; then
+          if [ "${OUTCOME}" != "success" ]; then
             echo "::error::Claude review step did not complete — blocking merge (fail-closed)."
             exit 1
           fi
-          if [ -z "${OUT:-}" ]; then
-            echo "::error::No structured verdict from Claude — blocking merge (fail-closed)."
-            exit 1
-          fi
-          if echo "$OUT" | jq -e '.approved == true' >/dev/null; then
+          # Parse the verdict exactly once. ANY parse failure, empty output, or a
+          # missing / non-true 'approved' field defaults to BLOCK — the gate stays
+          # fail-closed regardless of pipefail semantics or future edits.
+          verdict="$(jq -r 'if .approved == true then "approve" else "block" end' <<<"${OUT:-}" 2>/dev/null || echo block)"
+          if [ "${verdict}" = "approve" ]; then
             echo "Claude approved this PR."
-            echo "$OUT" | jq -r '.summary // empty'
+            jq -r '.summary // empty' <<<"${OUT}" 2>/dev/null || true
           else
-            echo "::error::Claude did not approve this PR. Blocking issues:"
-            echo "$OUT" | jq -r '.blocking_issues[]? | "  - " + .'
+            echo "::error::Claude did not approve this PR (or produced no valid verdict). Blocking issues:"
+            jq -r '.blocking_issues[]? | "  - " + .' <<<"${OUT:-}" 2>/dev/null || true
             exit 1
           fi

@@ -70,8 +70,8 @@ pipeline is green from day one and the real checks switch on automatically as
 the app lands.
 
 Other ruleset rules: the branch must be **up to date** with `main` before merge,
-all **conversations must be resolved**, history must stay **linear**, and
-**force-pushes and deletion of `main` are blocked**.
+history must stay **linear**, and **force-pushes and deletion of `main` are
+blocked**.
 
 ## 6. Merge
 
