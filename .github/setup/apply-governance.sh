@@ -7,9 +7,12 @@
 # Usage:    bash .github/setup/apply-governance.sh [owner/repo]
 #
 # The committed ruleset (.github/rulesets/protect-main.json) is the source of
-# truth for branch protection. NOTE: it lists `claude-review` as a required
-# check — do not apply the full ruleset until the ANTHROPIC_API_KEY secret is
-# set and claude-review has gone green once, or you will block your own merges.
+# truth for branch protection. NOTE: `claude-review` has been REMOVED from the
+# required checks for now — it calls the Anthropic API (pay-as-you-go) and the
+# ANTHROPIC_API_KEY account is unfunded, so it fail-closed and blocked every
+# merge. The workflow is also disabled (`gh workflow disable claude-review.yml`).
+# To re-enable: fund the API account, `gh workflow enable claude-review.yml`,
+# re-add the `claude-review` check below, and re-run this script.
 # See .github/CONTRIBUTING.md (break-glass) and docs/superpowers/specs for rationale.
 set -euo pipefail
 

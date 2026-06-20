@@ -28,6 +28,15 @@ concurrency:
 jobs:
   claude-review:
     name: claude-review
+    # DISABLED to avoid Anthropic API credit usage. This gate calls the paid
+    # Anthropic API and the ANTHROPIC_API_KEY account is unfunded. The workflow
+    # is also disabled at the repo level (`gh workflow disable claude-review.yml`);
+    # this `if` is the durable, in-code stop so the API is never called — even if
+    # the workflow is re-enabled — unless someone explicitly opts back in.
+    # To re-enable: fund the API account, set repo variable
+    # CLAUDE_REVIEW_ENABLED=true, run `gh workflow enable claude-review.yml`, and
+    # re-add `claude-review` to the protect-main required checks.
+    if: ${{ vars.CLAUDE_REVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -40,8 +49,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1) Fetch the PR diff (bounded so the request stays reasonable).
-          diff="$(gh pr diff "$PR" | head -c 200000)"
+          # 1) Fetch the PR diff (bounded so the request stays reasonable). Fetch
+          #    fully to a file FIRST, then truncate: piping `gh` straight into
+          #    `head -c` makes `gh` die with SIGPIPE (exit 141) once `head` closes
+          #    the pipe on a large diff, which under `pipefail` fails this gate on a
+          #    legitimately large PR. A real fetch failure still fails closed.
+          if ! gh pr diff "$PR" > "$RUNNER_TEMP/pr.diff"; then
+            echo "::error::Failed to fetch PR diff — blocking (fail-closed)."
+            exit 1
+          fi
+          diff="$(head -c 200000 "$RUNNER_TEMP/pr.diff")"
           if [ -z "$diff" ]; then
             echo "Empty diff — nothing to review."
             exit 0
