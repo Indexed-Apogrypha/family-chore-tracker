@@ -1,0 +1,105 @@
+name: CI
+
+# Runs on every PR (gates merge) and on pushes to main (post-merge safety net).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Each app job (lint/typecheck/test/build) reports a status check whose name is
+# EXACTLY the context required by the `protect-main` ruleset. They must always
+# run and conclude (no job-level skips), or a required check would hang on
+# "Expected". The no-op-pass runner keeps them green until the app exists.
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash .github/scripts/run-script.sh lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash .github/scripts/run-script.sh typecheck
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash .github/scripts/run-script.sh test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: bash .github/scripts/run-script.sh build
+
+  secret-scan:
+    name: secret-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so gitleaks scans every commit on the branch
+      # Run gitleaks via its official image (free for personal accounts; avoids
+      # the Action's Node-runtime deprecation). `git` mode scans committed
+      # history only, so the local untracked .env is never read.
+      - name: gitleaks (scan committed history for secrets)
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git --redact --exit-code 1 /repo
+
+  # PR-title lint: the title becomes the squash commit message, so enforcing
+  # Conventional Commits here gives main a clean, conventional history.
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Advisory (NOT a required check): nudges branch-naming without risking lockout.
+  branch-name:
+    name: branch-name
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Validate branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          pattern='^(feat|fix|chore|docs|refactor|test|ci|perf|build|revert)/'
+          if [[ ! "$HEAD_REF" =~ $pattern ]]; then
+            echo "::error::Branch '$HEAD_REF' must start with one of: feat/ fix/ chore/ docs/ refactor/ test/ ci/ perf/ build/ revert/"
+            exit 1
+          fi
+          echo "Branch name OK: $HEAD_REF"

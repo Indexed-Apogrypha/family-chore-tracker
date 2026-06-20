@@ -1,0 +1,80 @@
+name: claude-review
+
+# Automated reviewer gate. The job name `claude-review` IS the required status
+# check registered in the protect-main ruleset.
+#
+# IMPORTANT — this gate is fail-CLOSED by design. anthropics/claude-code-action
+# posts review comments but exits 0 even on critical findings, so relying on the
+# action's own exit code would be a FAKE gate (green on serious bugs). Instead
+# Claude returns a structured verdict and the "Enforce verdict" step turns a
+# blocking verdict — or any failure to produce a verdict — into a failed check.
+#
+# Uses `pull_request` (NOT pull_request_target): the PR code never runs with the
+# secret. Requires a repo secret ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write # required: claude-code-action fetches a GitHub OIDC token for its app-based GitHub auth, even when the model uses an API key
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    name: claude-review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Claude review
+        id: review
+        uses: anthropics/claude-code-action@51705da45eecce209d4700538bf8377d5b5fc695 # v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Subscription alternative (use ONE): obtain via `claude setup-token`.
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          track_progress: true
+          prompt: |
+            Review the diff of this pull request for correctness bugs, security
+            issues, secret/credential leakage, and obvious regressions. Post
+            specific inline comments for anything blocking. Be pragmatic: style
+            nits and subjective preferences are NOT blocking.
+
+            Then return your verdict via the provided JSON schema:
+            - approved=true only if there are no blocking issues.
+            - approved=false if there is ANY blocking issue, listing each one in
+              blocking_issues.
+          claude_args: |
+            --max-turns 25
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),mcp__github_inline_comment__create_inline_comment"
+            --json-schema '{"type":"object","properties":{"approved":{"type":"boolean"},"blocking_issues":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}},"required":["approved"]}'
+
+      - name: Enforce verdict (fail-closed)
+        if: always()
+        env:
+          OUT: ${{ steps.review.outputs.structured_output }}
+          OUTCOME: ${{ steps.review.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "${OUTCOME}" != "success" ]; then
+            echo "::error::Claude review step did not complete — blocking merge (fail-closed)."
+            exit 1
+          fi
+          # Parse the verdict exactly once. ANY parse failure, empty output, or a
+          # missing / non-true 'approved' field defaults to BLOCK — the gate stays
+          # fail-closed regardless of pipefail semantics or future edits.
+          verdict="$(jq -r 'if .approved == true then "approve" else "block" end' <<<"${OUT:-}" 2>/dev/null || echo block)"
+          if [ "${verdict}" = "approve" ]; then
+            echo "Claude approved this PR."
+            jq -r '.summary // empty' <<<"${OUT}" 2>/dev/null || true
+          else
+            echo "::error::Claude did not approve this PR (or produced no valid verdict). Blocking issues:"
+            jq -r '.blocking_issues[]? | "  - " + .' <<<"${OUT:-}" 2>/dev/null || true
+            exit 1
+          fi

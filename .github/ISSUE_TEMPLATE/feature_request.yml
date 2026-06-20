@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a new capability or an improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the outcome you want, not just the mechanism. That keeps the design space open.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What can't you do today, or what is painful? Who is affected (parent, child)?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see happen. Sketches and examples welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Chore submission / photos
+        - Vision judge (Anthropic/Gemini)
+        - Auth / families
+        - Supabase / persistence
+        - Offline / sync queue
+        - UI / PWA
+        - Build / CI / tooling
+        - Other
+    validations:
+      required: true

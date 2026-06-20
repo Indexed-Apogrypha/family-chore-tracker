@@ -1,0 +1,8 @@
+# Code owners for family-chore-tracker.
+#
+# This file documents ownership and auto-requests review. It is informational:
+# the enforced review gate is the `claude-review` required status check, not
+# "require review from Code Owners" (a solo owner cannot approve their own PR,
+# so code-owner review is intentionally NOT required in the ruleset).
+
+* @Indexed-Apogrypha

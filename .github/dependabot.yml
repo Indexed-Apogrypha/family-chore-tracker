@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # npm dependencies at the repo root. Minor + patch bumps are grouped into a
+  # single PR to keep review volume sane; majors come as individual PRs.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Keep the GitHub Actions used in workflows up to date (and SHA pins fresh).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
