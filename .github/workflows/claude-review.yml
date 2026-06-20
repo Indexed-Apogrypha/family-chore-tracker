@@ -40,8 +40,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1) Fetch the PR diff (bounded so the request stays reasonable).
-          diff="$(gh pr diff "$PR" | head -c 200000)"
+          # 1) Fetch the PR diff (bounded so the request stays reasonable). Fetch
+          #    fully to a file FIRST, then truncate: piping `gh` straight into
+          #    `head -c` makes `gh` die with SIGPIPE (exit 141) once `head` closes
+          #    the pipe on a large diff, which under `pipefail` fails this gate on a
+          #    legitimately large PR. A real fetch failure still fails closed.
+          if ! gh pr diff "$PR" > "$RUNNER_TEMP/pr.diff"; then
+            echo "::error::Failed to fetch PR diff — blocking (fail-closed)."
+            exit 1
+          fi
+          diff="$(head -c 200000 "$RUNNER_TEMP/pr.diff")"
           if [ -z "$diff" ]; then
             echo "Empty diff — nothing to review."
             exit 0
