@@ -1,7 +1,7 @@
 <!--
   This PR will not merge until every required gate is green:
   lint · typecheck · test · build · secret-scan · pr-title · claude-review
-  See CONTRIBUTING.md for the enforced workflow.
+  See .github/CONTRIBUTING.md for the enforced workflow.
 -->
 
 ## What & why

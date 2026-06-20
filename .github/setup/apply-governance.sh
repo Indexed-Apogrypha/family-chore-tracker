@@ -10,7 +10,7 @@
 # truth for branch protection. NOTE: it lists `claude-review` as a required
 # check — do not apply the full ruleset until the ANTHROPIC_API_KEY secret is
 # set and claude-review has gone green once, or you will block your own merges.
-# See CONTRIBUTING.md (break-glass) and docs/superpowers/specs for rationale.
+# See .github/CONTRIBUTING.md (break-glass) and docs/superpowers/specs for rationale.
 set -euo pipefail
 
 REPO="${1:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"

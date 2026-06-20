@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: How we work (contributing guide)
-    url: https://github.com/Indexed-Apogrypha/family-chore-tracker/blob/main/CONTRIBUTING.md
+    url: https://github.com/Indexed-Apogrypha/family-chore-tracker/blob/main/.github/CONTRIBUTING.md
     about: The enforced branch → PR → review → merge workflow and the gates every change must pass.

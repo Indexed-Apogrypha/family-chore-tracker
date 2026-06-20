@@ -68,7 +68,7 @@ These were verified against current GitHub / action docs before implementation.
 | `.github/ISSUE_TEMPLATE/*` | Bug / feature issue forms; blank issues disabled |
 | `.github/CODEOWNERS` | Ownership (informational; not a required gate) |
 | `.gitattributes` | Force LF so shell scripts don't break on Linux runners |
-| `CONTRIBUTING.md` | The enforced workflow + break-glass procedure |
+| `.github/CONTRIBUTING.md` | The enforced workflow + break-glass procedure |
 
 ## The ruleset (`protect-main`)
 
