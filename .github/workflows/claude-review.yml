@@ -28,6 +28,15 @@ concurrency:
 jobs:
   claude-review:
     name: claude-review
+    # DISABLED to avoid Anthropic API credit usage. This gate calls the paid
+    # Anthropic API and the ANTHROPIC_API_KEY account is unfunded. The workflow
+    # is also disabled at the repo level (`gh workflow disable claude-review.yml`);
+    # this `if` is the durable, in-code stop so the API is never called — even if
+    # the workflow is re-enabled — unless someone explicitly opts back in.
+    # To re-enable: fund the API account, set repo variable
+    # CLAUDE_REVIEW_ENABLED=true, run `gh workflow enable claude-review.yml`, and
+    # re-add `claude-review` to the protect-main required checks.
+    if: ${{ vars.CLAUDE_REVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
