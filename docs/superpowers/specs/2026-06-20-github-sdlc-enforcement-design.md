@@ -3,6 +3,7 @@
 - **Date:** 2026-06-20
 - **Repo:** `Indexed-Apogrypha/family-chore-tracker` (**public**, personal account — see "Went public" below)
 - **Status:** Implemented — 6 of 7 gates live and enforced; `claude-review` pending the Claude GitHub App install
+- **Related:** the application built on this governance is specified in [`2026-06-21-family-chore-tracker-design.md`](2026-06-21-family-chore-tracker-design.md)
 
 ## Goal
 

@@ -4,8 +4,9 @@ AI photo-based family chore verification: kids submit a photo of a completed
 chore, and a vision "judge" (Anthropic or Gemini) decides whether it passes.
 
 > **Status:** rebuilding from scratch. The governance and CI scaffolding is in
-> place; the application code is being rebuilt. Old code lives only in the
-> `ABANDONED/*` branches.
+> place; the application is being built against the
+> **[architecture &amp; design spec](docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md)**.
+> Old code lives only in the `ABANDONED/*` branches.
 
 ## Planned stack
 
@@ -13,6 +14,15 @@ chore, and a vision "judge" (Anthropic or Gemini) decides whether it passes.
 - **Supabase** — Postgres, Auth, Storage (per-family RLS)
 - **Vision judge** — Anthropic / Gemini behind one adapter seam
 - **Vitest** for tests
+
+## Architecture
+
+The full design is specified in
+**[docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md](docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md)**
+— a ports-and-adapters core with an ergonomic session edge, four swappable seams
+(judge, persistence, photo storage, clock) whose in-memory and real adapters are
+proven equivalent by contract tests, an advisory AI judge with parent approval,
+and an M0–M7 delivery plan. Start there before adding application code.
 
 ## Development workflow
 
