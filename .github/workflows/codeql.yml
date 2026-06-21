@@ -1,7 +1,11 @@
 name: CodeQL
 
-# Static analysis (code scanning) for the JS/TS codebase. Findings surface under
-# the repo's Security -> Code scanning tab.
+# Static analysis (code scanning) for the JS/TS code and the GitHub Actions
+# workflows. Findings surface under the repo's Security -> Code scanning tab.
+#
+# This committed workflow is the single source of truth for code scanning, so
+# GitHub's "default setup" is kept DISABLED (apply-governance.sh enforces this) —
+# the two configurations cannot run at the same time.
 #
 # ADVISORY, NOT a required check: code scanning is asynchronous and can be slow,
 # and the app is still near-empty. It is intentionally NOT in the `protect-main`
@@ -31,7 +35,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript]
+        # javascript-typescript: the app code. actions: the workflow files
+        # themselves (catches e.g. script injection via untrusted ${{ ... }}).
+        language: [javascript-typescript, actions]
     steps:
       - uses: actions/checkout@v7
 
@@ -39,7 +45,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
-          # JS/TS needs no compilation, so CodeQL scans source directly.
+          # Both languages are interpreted, so CodeQL scans source directly.
           build-mode: none
 
       - name: Perform CodeQL analysis

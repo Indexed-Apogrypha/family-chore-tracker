@@ -76,5 +76,10 @@ gh api --method PUT "repos/$REPO/automated-security-fixes" >/dev/null 2>&1 \
   && echo "    Dependabot security updates: on" || echo "    (could not enable security updates)"
 gh api --method PUT "repos/$REPO/private-vulnerability-reporting" >/dev/null 2>&1 \
   && echo "    private vulnerability reporting: on" || echo "    (could not enable PVR)"
+# Code scanning is defined as code in .github/workflows/codeql.yml, so keep
+# GitHub's managed "default setup" OFF — the two configurations conflict.
+gh api --method PATCH "repos/$REPO/code-scanning/default-setup" -f state=not-configured >/dev/null 2>&1 \
+  && echo "    code scanning default setup: off (codeql.yml is authoritative)" \
+  || echo "    (code scanning default setup already off)"
 
 echo "==> Governance applied."
