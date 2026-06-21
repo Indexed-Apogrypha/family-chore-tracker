@@ -1,5 +1,5 @@
 import type { LedgerEntry } from "@/domain/points/types";
-import type { MemberId, SubmissionId } from "@/domain/shared/ids";
+import type { FamilyId, MemberId, SubmissionId } from "@/domain/shared/ids";
 import type { PointsLedger } from "@/ports/repositories";
 
 /**
@@ -18,10 +18,10 @@ export function inMemoryPointsLedger(): PointsLedger {
       bySubmission.set(entry.submissionId, entry);
     },
 
-    async totalFor(member: MemberId) {
+    async totalFor(family: FamilyId, member: MemberId) {
       let total = 0;
       for (const entry of bySubmission.values()) {
-        if (entry.memberId === member) {
+        if (entry.familyId === family && entry.memberId === member) {
           total += entry.delta;
         }
       }

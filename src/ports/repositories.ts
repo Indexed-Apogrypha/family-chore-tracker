@@ -94,5 +94,9 @@ export interface PointsLedger {
    * never double-credits (§6, §7.1).
    */
   append(entry: LedgerEntry): Promise<void>;
-  totalFor(memberId: MemberId): Promise<number>;
+  /**
+   * Sum a member's credits, scoped by `familyId` so the in-memory side mirrors
+   * Supabase RLS — entries from another family never count (§9).
+   */
+  totalFor(familyId: FamilyId, memberId: MemberId): Promise<number>;
 }
