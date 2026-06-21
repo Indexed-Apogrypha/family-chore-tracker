@@ -31,6 +31,12 @@ goes through a branch → pull request → required checks → squash-merge to `
 direct pushes to `main` are blocked. See **[.github/CONTRIBUTING.md](.github/CONTRIBUTING.md)**
 for the full workflow and the gates every PR must pass.
 
+## Security
+
+Found a vulnerability? **Don't open a public issue.** Report it privately via
+GitHub's **Report a vulnerability** button (Security tab). The full policy,
+scope, and accepted v1 trade-offs are in **[.github/SECURITY.md](.github/SECURITY.md)**.
+
 ## Configuration
 
 Copy [.env.example](.env.example) to `.env` and fill in the keys. The real `.env`

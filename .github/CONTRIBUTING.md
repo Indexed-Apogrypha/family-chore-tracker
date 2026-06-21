@@ -69,6 +69,11 @@ The PR cannot merge until all required checks succeed:
 | `pr-title`     | PR title is a valid Conventional Commit |
 | `claude-review`| Automated Claude review signs off on the diff |
 
+Two checks run but are **advisory, not required**, so they never block a merge:
+`branch-name` (nudges the branch-prefix convention) and `CodeQL` (static
+analysis / code scanning — results appear under the repo's Security tab). CodeQL
+can be promoted to a required check once the app has real code.
+
 CI jobs **no-op-pass** while the application code does not yet exist, so the
 pipeline is green from day one and the real checks switch on automatically as
 the app lands.
