@@ -126,7 +126,7 @@ interface ChoreRepository      { /* templates + instances; idempotent upsert */ 
 interface SubmissionRepository { /* attempts + verdict */ }
 interface MemberRepository     { /* family, parents, kids, pin_hash */ }
 interface PointsLedger         { append(e: LedgerEntry): Promise<void>
-                                 totalFor(memberId: MemberId): Promise<number> }
+                                 totalFor(familyId: FamilyId, memberId: MemberId): Promise<number> }
 
 // ports/clock.ts         — system | fixed(test)
 interface Clock { today(): IsoDate; now(): IsoInstant }

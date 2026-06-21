@@ -27,14 +27,14 @@ export function runPointsLedgerContract(
       const ledger = makeLedger();
       await ledger.append(entry({ submissionId: submissionId("s1"), delta: 5 }));
       await ledger.append(entry({ submissionId: submissionId("s2"), delta: 3 }));
-      expect(await ledger.totalFor(memberId("m1"))).toBe(8);
+      expect(await ledger.totalFor(familyId("f1"), memberId("m1"))).toBe(8);
     });
 
     it("is idempotent on submissionId — a replayed credit never double-counts", async () => {
       const ledger = makeLedger();
       await ledger.append(entry({ submissionId: submissionId("s1"), delta: 5 }));
       await ledger.append(entry({ submissionId: submissionId("s1"), delta: 5 }));
-      expect(await ledger.totalFor(memberId("m1"))).toBe(5);
+      expect(await ledger.totalFor(familyId("f1"), memberId("m1"))).toBe(5);
     });
 
     it("isolates totals per member and is zero for the unknown", async () => {
@@ -53,9 +53,32 @@ export function runPointsLedgerContract(
           delta: 9,
         }),
       );
-      expect(await ledger.totalFor(memberId("m1"))).toBe(5);
-      expect(await ledger.totalFor(memberId("m2"))).toBe(9);
-      expect(await ledger.totalFor(memberId("m3"))).toBe(0);
+      expect(await ledger.totalFor(familyId("f1"), memberId("m1"))).toBe(5);
+      expect(await ledger.totalFor(familyId("f1"), memberId("m2"))).toBe(9);
+      expect(await ledger.totalFor(familyId("f1"), memberId("m3"))).toBe(0);
+    });
+
+    it("scopes totals by family: another family's entries never count (§9)", async () => {
+      const ledger = makeLedger();
+      await ledger.append(
+        entry({
+          familyId: familyId("f1"),
+          memberId: memberId("m1"),
+          submissionId: submissionId("s1"),
+          delta: 5,
+        }),
+      );
+      // Same memberId value, different family — must not leak into f1's total.
+      await ledger.append(
+        entry({
+          familyId: familyId("f2"),
+          memberId: memberId("m1"),
+          submissionId: submissionId("s2"),
+          delta: 9,
+        }),
+      );
+      expect(await ledger.totalFor(familyId("f1"), memberId("m1"))).toBe(5);
+      expect(await ledger.totalFor(familyId("f2"), memberId("m1"))).toBe(9);
     });
   });
 }
