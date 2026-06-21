@@ -23,6 +23,8 @@ out/
 .turbo/
 .vercel/
 *.tsbuildinfo
+# Next.js auto-generates this on `next typegen` / `next build`; never commit it.
+next-env.d.ts
 
 # ---- Test / coverage ----
 coverage/
