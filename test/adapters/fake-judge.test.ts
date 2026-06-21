@@ -5,13 +5,12 @@ import type { PhotoRef } from "@/ports/photo-storage";
 
 const photo: PhotoRef = { path: "f1/i1/s1.jpg" };
 
-describe("fakeJudge", () => {
-  it("returns a Verdict tagged 'fake' with a confidence in [0,1]", async () => {
+// The Verdict *shape* contract lives in test/contract/judge.contract.ts. These
+// cover the fake judge's defining property: determinism (a real judge is not).
+describe("fakeJudge (determinism)", () => {
+  it("references the chore and is tagged model 'fake'", async () => {
     const verdict = await fakeJudge().evaluate(photo, { title: "Dishes" });
     expect(verdict.model).toBe("fake");
-    expect(typeof verdict.pass).toBe("boolean");
-    expect(verdict.confidence).toBeGreaterThanOrEqual(0);
-    expect(verdict.confidence).toBeLessThanOrEqual(1);
     expect(verdict.reasoning).toContain("Dishes");
   });
 
@@ -28,7 +27,8 @@ describe("fakeJudge", () => {
     const verdicts = await Promise.all(
       titles.map((title) => judge.evaluate(photo, { title })),
     );
-    const distinct = new Set(verdicts.map((v) => `${v.pass}:${v.confidence}`));
-    expect(distinct.size).toBeGreaterThan(1);
+    expect(new Set(verdicts.map((v) => `${v.pass}:${v.confidence}`)).size).toBeGreaterThan(
+      1,
+    );
   });
 });
