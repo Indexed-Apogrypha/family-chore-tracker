@@ -1,0 +1,50 @@
+import type { Family, Member } from "@/domain/family/types";
+import { familyId, memberId } from "@/domain/shared/ids";
+import type { FamilyId, MemberId } from "@/domain/shared/ids";
+import type { MemberRepository } from "@/ports/repositories";
+
+/**
+ * In-memory members/families store — the executable spec for the Supabase
+ * adapter. Reads are scoped by `familyId` so cross-family access resolves to
+ * `null`, mirroring the per-family RLS of the real database (design §9).
+ */
+export function inMemoryMemberRepository(): MemberRepository {
+  const families = new Map<FamilyId, Family>();
+  const members = new Map<MemberId, Member>();
+
+  return {
+    async createFamily({ name, founderDisplayName }) {
+      const fid = familyId(crypto.randomUUID());
+      const founderId = memberId(crypto.randomUUID());
+      const founder: Member = {
+        id: founderId,
+        familyId: fid,
+        kind: "parent",
+        displayName: founderDisplayName,
+      };
+      const family: Family = { id: fid, name, createdBy: founderId };
+      families.set(fid, family);
+      members.set(founderId, founder);
+      return { family, founder };
+    },
+
+    async getFamily(id) {
+      return families.get(id) ?? null;
+    },
+
+    async addMember(input) {
+      const member: Member = { ...input, id: memberId(crypto.randomUUID()) };
+      members.set(member.id, member);
+      return member;
+    },
+
+    async getMember(family, id) {
+      const member = members.get(id);
+      return member && member.familyId === family ? member : null;
+    },
+
+    async listMembers(family) {
+      return [...members.values()].filter((m) => m.familyId === family);
+    },
+  };
+}
