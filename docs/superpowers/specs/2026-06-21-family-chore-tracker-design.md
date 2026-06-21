@@ -384,3 +384,5 @@ contract tests). The chosen hybrid:
 - See [`.env.example`](../../../.env.example) and
   [`.github/CONTRIBUTING.md`](../../../.github/CONTRIBUTING.md) for the
   configuration contract and the SDLC workflow every PR must pass.
+- The SDLC governance this app is built on is designed in
+  [`2026-06-20-github-sdlc-enforcement-design.md`](2026-06-20-github-sdlc-enforcement-design.md).

@@ -22,6 +22,10 @@ The only way a change reaches `main` is a pull request with every required check
 Open a Bug report or Feature request issue. It frames the work and gives the PR
 something to close. Not strictly required, but it keeps history legible.
 
+Application work is framed by the
+[architecture &amp; design spec](../docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md)
+and its M0–M7 milestones — feature issues should trace back to it.
+
 ## 2. Branch
 
 Cut a short-lived branch off `main`. The branch name **must** start with one of:
