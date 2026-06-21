@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Governance-as-code: apply the repository settings, the protected `production`
-# environment, and the `protect-main` branch ruleset. Idempotent — safe to
-# re-run; it UPDATES the existing ruleset rather than creating duplicates.
+# environment, the `protect-main` branch ruleset, and the native security
+# features (Dependabot alerts + security updates, private vulnerability
+# reporting). Idempotent — safe to re-run; it UPDATES the existing ruleset
+# rather than creating duplicates.
 #
 # Requires: gh CLI authenticated with admin on the repo.
 # Usage:    bash .github/setup/apply-governance.sh [owner/repo]
@@ -60,5 +62,19 @@ else
   gh api --method POST "repos/$REPO/rulesets" --input "$RULESET_FILE" >/dev/null
 fi
 echo "    done."
+
+# Native security features. These are repo SETTINGS (not committable config like
+# .github/dependabot.yml), so they can only be toggled via the API. All three are
+# free on public repos. Each is a 204-on-success PUT; the fallbacks keep the
+# script green if the plan/permissions don't allow a given toggle.
+# SECURITY.md (the disclosure policy) is committed at .github/SECURITY.md;
+# enabling private vulnerability reporting wires up its "Report a vulnerability" button.
+echo "==> Security features (Dependabot alerts + security updates, private vulnerability reporting)"
+gh api --method PUT "repos/$REPO/vulnerability-alerts" >/dev/null 2>&1 \
+  && echo "    Dependabot alerts: on" || echo "    (could not enable Dependabot alerts)"
+gh api --method PUT "repos/$REPO/automated-security-fixes" >/dev/null 2>&1 \
+  && echo "    Dependabot security updates: on" || echo "    (could not enable security updates)"
+gh api --method PUT "repos/$REPO/private-vulnerability-reporting" >/dev/null 2>&1 \
+  && echo "    private vulnerability reporting: on" || echo "    (could not enable PVR)"
 
 echo "==> Governance applied."
