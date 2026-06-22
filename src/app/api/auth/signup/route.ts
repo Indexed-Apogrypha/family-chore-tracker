@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 
-import { buildPorts } from "@/composition/container";
+import { serverPorts } from "@/composition/server";
 import { createSupabaseServerClient } from "@/composition/supabase";
 
 /**
@@ -38,7 +38,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // First-login bootstrap: a brand-new parent has no family yet → create one.
-  const ports = buildPorts();
+  const ports = serverPorts();
   const existing = await ports.members.findByAuthUserId(data.user.id);
   if (!existing) {
     await ports.members.createFamily({

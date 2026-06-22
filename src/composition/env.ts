@@ -65,3 +65,12 @@ export function readEnv(env: Env = process.env): EnvConfig {
     persistence: selectPersistence(env),
   };
 }
+
+/**
+ * Real mode = Supabase is configured (accounts, real login). Keyless/practice
+ * mode otherwise. The app/ layer reads the mode through this helper so it never
+ * touches `process.env` directly (the dependency-rule guard, §4.1).
+ */
+export function isRealMode(env: Env = process.env): boolean {
+  return selectPersistence(env).kind === "supabase";
+}

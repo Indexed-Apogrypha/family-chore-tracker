@@ -10,6 +10,7 @@ import {
   listMembers,
   verifyKidPin,
 } from "@/usecases/members";
+import { type SwitchProfileInput, switchProfile } from "@/usecases/profile";
 
 /**
  * The session edge (design §4.2). `app.as(ctx)` binds the request context once;
@@ -25,6 +26,8 @@ export interface Session {
   listMembers(): Promise<Result<Member[]>>;
   /** Verify a kid's PIN to switch the active profile — any family member (§3.1). */
   verifyKidPin(input: VerifyKidPinInput): Promise<Result<Member>>;
+  /** Select the active profile: parent (no PIN) or a kid (PIN-gated) — §3.1. */
+  switchProfile(input: SwitchProfileInput): Promise<Result<Member>>;
 }
 
 export interface App {
@@ -46,6 +49,8 @@ export function makeApp(ports: Ports): App {
         listMembers: () => listMembers(ports, ctx),
         verifyKidPin: (input: VerifyKidPinInput) =>
           verifyKidPin(ports, ctx, input),
+        switchProfile: (input: SwitchProfileInput) =>
+          switchProfile(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {
