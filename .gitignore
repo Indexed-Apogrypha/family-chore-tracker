@@ -57,5 +57,6 @@ Thumbs.db
 !.vscode/extensions.json
 
 # ---- Claude Code ----
-# Share project settings; keep personal overrides local.
+# Share project settings + CLAUDE.md; keep personal overrides local.
 .claude/settings.local.json
+CLAUDE.local.md
