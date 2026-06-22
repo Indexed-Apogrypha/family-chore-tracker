@@ -27,17 +27,20 @@ describe("buildPorts", () => {
     expect(ports.clock.today()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it("refuses to build Supabase adapters in M0 (they land later)", () => {
-    expect(() =>
-      buildPorts({
-        judge: { provider: "fake" },
-        persistence: {
-          kind: "supabase",
-          url: "https://x.supabase.co",
-          serviceRoleKey: "k",
-        },
-      }),
-    ).toThrow(/supabase/i);
+  it("wires a Supabase member repository when persistence is supabase (M1)", () => {
+    // createClient is lazy (no network at construction), so a fake url/key is fine.
+    const ports = buildPorts({
+      judge: { provider: "fake" },
+      persistence: {
+        kind: "supabase",
+        url: "https://x.supabase.co",
+        serviceRoleKey: "k",
+      },
+    });
+    expect(typeof ports.members.createFamily).toBe("function");
+    // Chores/submissions/points/photos stay in-memory until M3/M6 — no throw.
+    expect(ports.chores).toBeDefined();
+    expect(ports.points).toBeDefined();
   });
 
   it("refuses to build a real judge in M0 (lands in M4)", () => {

@@ -6,11 +6,13 @@ import {
   inMemoryPointsLedger,
   inMemorySubmissionRepository,
 } from "@/adapters/persistence/in-memory";
+import { supabaseMemberRepository } from "@/adapters/persistence/supabase/members";
 import { inMemoryPhotoStorage } from "@/adapters/storage/in-memory";
 import type { JudgePort } from "@/ports/judge";
 import type { Ports } from "@/ports";
 
 import { type EnvConfig, type JudgeConfig, readEnv } from "./env";
+import { createServiceRoleClient } from "./supabase";
 
 /**
  * The composition root: the only place that imports adapters and turns the
@@ -38,9 +40,22 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
   const judge = selectJudge(config.judge);
 
   if (config.persistence.kind === "supabase") {
-    throw new Error(
-      "Supabase persistence/storage adapters land in M1/M3/M6; keyless only in M0",
+    // M1: members persist to Supabase via the server-only service-role client.
+    // The rest stay in-memory until their milestone (photos → M3; chores /
+    // submissions / points → M6). The contract suite makes those swaps low-risk.
+    const client = createServiceRoleClient(
+      config.persistence.url,
+      config.persistence.serviceRoleKey,
     );
+    return {
+      judge,
+      clock: systemClock(),
+      photos: inMemoryPhotoStorage(),
+      chores: inMemoryChoreRepository(),
+      submissions: inMemorySubmissionRepository(),
+      members: supabaseMemberRepository(client),
+      points: inMemoryPointsLedger(),
+    };
   }
 
   return {
