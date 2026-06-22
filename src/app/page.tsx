@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { isRealMode } from "@/composition/env";
@@ -27,6 +28,9 @@ export default async function Home() {
   return (
     <main>
       <h1>Family Chore Tracker</h1>
+      <p className="board-link">
+        <Link href="/board">View today&rsquo;s chores →</Link>
+      </p>
       <ProfileSwitcher
         members={members}
         activeMemberId={ctx.actor.memberId as string}
