@@ -4,6 +4,13 @@ import type { FamilyId, MemberId } from "@/domain/shared/ids";
 import type { MemberRepository } from "@/ports/repositories";
 
 /**
+ * Deterministic stand-in for a real KDF — the keyless executable spec. The
+ * Supabase adapter swaps in a real hash (§9); the contract checks behavior
+ * (`pin_hash` ≠ plaintext, verify matches), never the format.
+ */
+const fakePinHash = (pin: string): string => `fake$${pin}`;
+
+/**
  * In-memory members/families store — the executable spec for the Supabase
  * adapter. Reads are scoped by `familyId` so cross-family access resolves to
  * `null`, mirroring the per-family RLS of the real database (design §9).
@@ -31,6 +38,18 @@ export function inMemoryMemberRepository(): MemberRepository {
 
     async getFamily(id) {
       return families.get(id) ?? null;
+    },
+
+    async addKid({ familyId: family, displayName, pin }) {
+      const kid: Member = {
+        id: memberId(crypto.randomUUID()),
+        familyId: family,
+        kind: "kid",
+        displayName,
+        pinHash: fakePinHash(pin),
+      };
+      members.set(kid.id, kid);
+      return kid;
     },
 
     async addMember(input) {

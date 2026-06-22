@@ -3,6 +3,7 @@ import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 import { type CreateFamilyInput, createFamily } from "@/usecases/family";
+import { type AddKidInput, addKid, listMembers } from "@/usecases/members";
 
 /**
  * The session edge (design §4.2). `app.as(ctx)` binds the request context once;
@@ -12,6 +13,10 @@ import { type CreateFamilyInput, createFamily } from "@/usecases/family";
  */
 export interface Session {
   readonly ctx: RequestContext;
+  /** Add a kid profile under the bound family — parent-only (§8.3). */
+  addKid(input: AddKidInput): Promise<Result<Member>>;
+  /** List the bound family's members — any family member (§8.3). */
+  listMembers(): Promise<Result<Member[]>>;
 }
 
 export interface App {
@@ -27,7 +32,11 @@ export interface App {
 export function makeApp(ports: Ports): App {
   return {
     as(ctx: RequestContext): Session {
-      return { ctx };
+      return {
+        ctx,
+        addKid: (input: AddKidInput) => addKid(ports, ctx, input),
+        listMembers: () => listMembers(ports, ctx),
+      };
     },
     createFamily(input: CreateFamilyInput) {
       return createFamily(ports, input);

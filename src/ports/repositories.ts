@@ -32,6 +32,16 @@ export interface MemberRepository {
     authUserId?: string;
   }): Promise<{ family: Family; founder: Member }>;
   getFamily(id: FamilyId): Promise<Family | null>;
+  /**
+   * Add a kid profile under a family. The adapter hashes `pin` into the stored
+   * `pin_hash` — the in-memory side fakes it, Supabase uses a real KDF (§3.1,
+   * §9). The contract proves behavior, not hash format.
+   */
+  addKid(input: {
+    familyId: FamilyId;
+    displayName: string;
+    pin: string;
+  }): Promise<Member>;
   addMember(input: Omit<Member, "id">): Promise<Member>;
   getMember(familyId: FamilyId, id: MemberId): Promise<Member | null>;
   listMembers(familyId: FamilyId): Promise<Member[]>;
