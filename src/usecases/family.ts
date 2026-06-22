@@ -6,6 +6,11 @@ import type { Ports } from "@/ports";
 export interface CreateFamilyInput {
   name: string;
   founderDisplayName: string;
+  /**
+   * The founding parent's Supabase Auth user id, threaded through in real mode.
+   * Absent in keyless mode (no accounts); the founder is then auth-less (§9).
+   */
+  authUserId?: string;
 }
 
 /** Max length for the free-text names a family bootstraps with. */
@@ -51,6 +56,7 @@ export async function createFamily(
   const created = await ports.members.createFamily({
     name: name.value,
     founderDisplayName: founderDisplayName.value,
+    authUserId: input.authUserId,
   });
   return ok(created);
 }

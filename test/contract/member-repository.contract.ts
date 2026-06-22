@@ -24,6 +24,16 @@ export function runMemberRepositoryContract(
       expect(family.createdBy).toBe(founder.id);
     });
 
+    it("createFamily stores the founder's authUserId when supplied (§9)", async () => {
+      const repo = makeRepo();
+      const { founder } = await repo.createFamily({
+        name: "The Harpers",
+        founderDisplayName: "Sam",
+        authUserId: "auth-user-123",
+      });
+      expect(founder.authUserId).toBe("auth-user-123");
+    });
+
     it("getFamily returns the created family and null for unknown ids", async () => {
       const repo = makeRepo();
       const { family } = await repo.createFamily({
