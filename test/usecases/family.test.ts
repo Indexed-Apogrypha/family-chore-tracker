@@ -54,6 +54,20 @@ describe("createFamily (validation, §8.2)", () => {
   });
 });
 
+describe("createFamily (real-mode readiness, §9)", () => {
+  it("threads an optional authUserId through to the founding parent", async () => {
+    const result = await createFamily(inMemoryPorts(), {
+      name: "The Harpers",
+      founderDisplayName: "Sam",
+      authUserId: "auth-user-123",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.founder.authUserId).toBe("auth-user-123");
+    }
+  });
+});
+
 describe("use-case test harness", () => {
   it("wires a fixed clock and fake judge over in-memory stores", () => {
     expect(inMemoryPorts("2026-06-21T09:00:00.000Z").clock.today()).toBe(

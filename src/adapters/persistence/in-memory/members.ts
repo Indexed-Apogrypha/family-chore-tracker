@@ -13,7 +13,7 @@ export function inMemoryMemberRepository(): MemberRepository {
   const members = new Map<MemberId, Member>();
 
   return {
-    async createFamily({ name, founderDisplayName }) {
+    async createFamily({ name, founderDisplayName, authUserId }) {
       const fid = familyId(crypto.randomUUID());
       const founderId = memberId(crypto.randomUUID());
       const founder: Member = {
@@ -21,6 +21,7 @@ export function inMemoryMemberRepository(): MemberRepository {
         familyId: fid,
         kind: "parent",
         displayName: founderDisplayName,
+        ...(authUserId !== undefined ? { authUserId } : {}),
       };
       const family: Family = { id: fid, name, createdBy: founderId };
       families.set(fid, family);

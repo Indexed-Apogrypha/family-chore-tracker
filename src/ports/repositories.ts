@@ -28,6 +28,8 @@ export interface MemberRepository {
   createFamily(input: {
     name: string;
     founderDisplayName: string;
+    /** Founder's Supabase Auth user id in real mode; absent in keyless (§9). */
+    authUserId?: string;
   }): Promise<{ family: Family; founder: Member }>;
   getFamily(id: FamilyId): Promise<Family | null>;
   addMember(input: Omit<Member, "id">): Promise<Member>;
