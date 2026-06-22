@@ -1,9 +1,11 @@
-import type { ChoreTemplate } from "@/domain/chore/types";
+import { isDue } from "@/domain/chore/recurrence";
+import type { ChoreInstance, ChoreTemplate } from "@/domain/chore/types";
 import type { Recurrence } from "@/domain/shared/enums";
 import type { MemberId } from "@/domain/shared/ids";
 import { err, ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
+import type { IsoDate } from "@/ports/clock";
 import type { RequestContext } from "@/ports/context";
 
 import { requireParent } from "./authz";
@@ -69,4 +71,59 @@ export async function createTemplate(
     active: true,
   });
   return ok(template);
+}
+
+export interface GetTodayBoardInput {
+  /** Whose board to show — the active profile usually passes its own id. */
+  memberId: MemberId;
+  /** Defaults to `clock.today()`. */
+  date?: IsoDate;
+}
+
+/**
+ * The member's chore board for a day (design §7.3, §8.1). Materializes any
+ * missing instances for that member's **active** templates **due** on `date`
+ * — idempotently, via the `(template, member, dueDate)` upsert key — snapshotting
+ * each template's title/points onto the instance. **This is the only operation
+ * that generates instances**, and there is no cron in v1.
+ *
+ * Returns the day's instances (freshly generated templated ones plus any
+ * one-offs), each carrying its lifecycle status. Any family member may call it;
+ * a cross-family/unknown `memberId` resolves to `not_found` (§8.3).
+ */
+export async function getTodayBoard(
+  ports: Ports,
+  ctx: RequestContext,
+  input: GetTodayBoardInput,
+): Promise<Result<ChoreInstance[]>> {
+  const member = await ports.members.getMember(ctx.familyId, input.memberId);
+  if (!member) {
+    return err({ code: "not_found", entity: "member", id: input.memberId });
+  }
+
+  const date = input.date ?? ports.clock.today();
+
+  const templates = await ports.chores.listTemplates(ctx.familyId);
+  for (const template of templates) {
+    if (
+      template.active &&
+      template.assignedMemberId === input.memberId &&
+      isDue(template, date)
+    ) {
+      await ports.chores.upsertGeneratedInstance({
+        familyId: ctx.familyId,
+        templateId: template.id,
+        title: template.title, // snapshot at materialization
+        points: template.points, // snapshot at materialization
+        assignedMemberId: input.memberId,
+        dueDate: date,
+      });
+    }
+  }
+
+  const board = await ports.chores.listInstances(ctx.familyId, {
+    assignedMemberId: input.memberId,
+    dueDate: date,
+  });
+  return ok(board);
 }
