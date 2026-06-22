@@ -1,9 +1,13 @@
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 // Pure TS domain/adapter/use-case tests run in the Node environment with no
 // network. The `@/*` alias mirrors tsconfig's path mapping so tests import the
 // same way application code does. UI/e2e tests are deferred (design §10).
+//
+// `*.supabase.test.ts` are excluded here: they hit the live Supabase DB and need
+// secrets, so they stay out of the default (keyless) run and CI. Run them on
+// demand with `npm run test:supabase` (vitest.supabase.config.ts).
 export default defineConfig({
   resolve: {
     alias: {
@@ -13,5 +17,6 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+    exclude: [...configDefaults.exclude, "**/*.supabase.test.ts"],
   },
 });
