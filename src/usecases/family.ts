@@ -1,7 +1,9 @@
 import type { Family, Member } from "@/domain/family/types";
-import { err, ok } from "@/domain/shared/result";
+import { ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
+
+import { requireName } from "./validation";
 
 export interface CreateFamilyInput {
   name: string;
@@ -11,25 +13,6 @@ export interface CreateFamilyInput {
    * Absent in keyless mode (no accounts); the founder is then auth-less (§9).
    */
   authUserId?: string;
-}
-
-/** Max length for the free-text names a family bootstraps with. */
-const MAX_NAME_LENGTH = 80;
-
-/** Trim and bound a required free-text field, or return its validation error. */
-function requireName(field: string, value: string): Result<string> {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return err({ code: "validation", field, message: `${field} is required.` });
-  }
-  if (trimmed.length > MAX_NAME_LENGTH) {
-    return err({
-      code: "validation",
-      field,
-      message: `${field} must be ${MAX_NAME_LENGTH} characters or fewer.`,
-    });
-  }
-  return ok(trimmed);
 }
 
 /**

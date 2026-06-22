@@ -63,6 +63,27 @@ export function runMemberRepositoryContract(
       );
     });
 
+    it("addKid stores a kid with a hashed pin (not plaintext) and lists it", async () => {
+      const repo = makeRepo();
+      const { family, founder } = await repo.createFamily({
+        name: "F",
+        founderDisplayName: "P",
+      });
+      const kid = await repo.addKid({
+        familyId: family.id,
+        displayName: "Rae",
+        pin: "1234",
+      });
+      expect(kid.kind).toBe("kid");
+      expect(kid.displayName).toBe("Rae");
+      expect(kid.pinHash).toBeDefined();
+      expect(kid.pinHash).not.toBe("1234");
+      const members = await repo.listMembers(family.id);
+      expect(members.map((m) => m.id).sort()).toEqual(
+        [founder.id, kid.id].sort(),
+      );
+    });
+
     it("scopes by family: another family's member resolves to null (§9)", async () => {
       const repo = makeRepo();
       const a = await repo.createFamily({ name: "A", founderDisplayName: "Pa" });
