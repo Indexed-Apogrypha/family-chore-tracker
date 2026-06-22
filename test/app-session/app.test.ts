@@ -87,5 +87,13 @@ describe("makeApp (keyless boot)", () => {
       expect(template.value.active).toBe(true);
       expect(template.value.assignedMemberId).toBe(kid.value.id);
     }
+
+    // The freshly created daily template materializes onto the board.
+    const board = await session.getTodayBoard({ memberId: kid.value.id });
+    expect(board.ok).toBe(true);
+    if (board.ok) {
+      expect(board.value).toHaveLength(1);
+      expect(board.value[0].title).toBe("Make the bed");
+    }
   });
 });

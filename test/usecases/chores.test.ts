@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest";
 import { memberContext } from "@/app-session/context";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
-import { createTemplate } from "@/usecases/chores";
+import { createTemplate, getTodayBoard } from "@/usecases/chores";
 import { addKid } from "@/usecases/members";
 import { createFamily } from "@/usecases/family";
+
+// The harness fixed clock's today() is 2026-06-21 (a Sunday). Weekday ISO
+// references for weekly-recurrence tests (0 = Sunday … 6 = Saturday).
+const SUNDAY = "2026-06-21"; // === inMemoryPorts() clock.today()
+const MONDAY = "2026-06-22";
 
 import { inMemoryPorts } from "./harness";
 
@@ -139,6 +144,126 @@ describe("createTemplate (parent-only, §8.1)", () => {
       points: 5,
       recurrence: { kind: "daily" },
       assignedMemberId: other.kid.id,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "not_found") {
+      expect(result.error.entity).toBe("member");
+    }
+  });
+});
+
+describe("getTodayBoard — lazy instance generation (§7.3)", () => {
+  it("materializes an active template due today, snapshotting title/points", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+
+    // No date arg → uses clock.today() (= SUNDAY).
+    const board = unwrap(await getTodayBoard(ports, parentCtx, { memberId: kid.id }));
+    expect(board).toHaveLength(1);
+    expect(board[0].templateId).not.toBeNull();
+    expect(board[0].title).toBe("Make the bed"); // snapshot
+    expect(board[0].points).toBe(5); // snapshot
+    expect(board[0].dueDate).toBe(SUNDAY);
+    expect(board[0].status).toBe("todo");
+  });
+
+  it("is idempotent — calling twice for the same day makes no duplicate", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+
+    const first = unwrap(await getTodayBoard(ports, parentCtx, { memberId: kid.id }));
+    const second = unwrap(await getTodayBoard(ports, parentCtx, { memberId: kid.id }));
+    expect(second).toHaveLength(1);
+    expect(second[0].id).toBe(first[0].id); // same instance, not a regenerated one
+  });
+
+  it("generates only for templates due on the date (weekly), honoring the date arg", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    // Due Mondays only.
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Take out trash",
+        points: 2,
+        recurrence: { kind: "weekly", days: [1] },
+        assignedMemberId: kid.id,
+      }),
+    );
+
+    const sunday = unwrap(
+      await getTodayBoard(ports, parentCtx, { memberId: kid.id, date: SUNDAY }),
+    );
+    expect(sunday).toHaveLength(0);
+
+    const monday = unwrap(
+      await getTodayBoard(ports, parentCtx, { memberId: kid.id, date: MONDAY }),
+    );
+    expect(monday).toHaveLength(1);
+    expect(monday[0].dueDate).toBe(MONDAY);
+  });
+
+  it("skips inactive templates and templates assigned to a different member", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    const sib = unwrap(
+      await addKid(ports, parentCtx, { displayName: "Sib", pin: "5678" }),
+    );
+
+    // Assigned to the sibling, not the kid we ask about.
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Sib chore",
+        points: 1,
+        recurrence: { kind: "daily" },
+        assignedMemberId: sib.id,
+      }),
+    );
+
+    const board = unwrap(await getTodayBoard(ports, parentCtx, { memberId: kid.id }));
+    expect(board).toHaveLength(0);
+  });
+
+  it("includes one-off instances for the day alongside generated ones", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+    // A one-off due the same day (seeded directly via the repo — createOneOff
+    // use-case lands in #58).
+    await ports.chores.createOneOff({
+      familyId: parentCtx.familyId,
+      title: "Wash the car",
+      points: 10,
+      assignedMemberId: kid.id,
+      dueDate: SUNDAY,
+    });
+
+    const board = unwrap(await getTodayBoard(ports, parentCtx, { memberId: kid.id }));
+    expect(board.map((i) => i.title).sort()).toEqual(["Make the bed", "Wash the car"]);
+  });
+
+  it("resolves a cross-family member to not_found (§8.3)", async () => {
+    const { ports, parentCtx } = await withFamilyAndKid();
+    const other = await withFamilyAndKid(ports);
+    const result = await getTodayBoard(ports, parentCtx, {
+      memberId: other.kid.id,
     });
     expect(result.ok).toBe(false);
     if (!result.ok && result.error.code === "not_found") {
