@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { memberContext } from "@/app-session/context";
+import type { Recurrence } from "@/domain/shared/enums";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import {
@@ -133,6 +134,28 @@ describe("createTemplate (parent-only, §8.1)", () => {
       title: "Make the bed",
       points: 5,
       recurrence: { kind: "weekly", days: [] },
+      assignedMemberId: kid.id,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "validation") {
+      expect(result.error.field).toBe("recurrence");
+    }
+  });
+
+  // Malformed recurrence shapes reach the use-case as untrusted JSON from the
+  // route (cast to `Recurrence`). They must come back as a `validation` value,
+  // never a thrown exception or a silently-stored bad template.
+  it.each([
+    ["weekly with a missing days array", { kind: "weekly" }],
+    ["weekly with a non-array days", { kind: "weekly", days: "nope" }],
+    ["weekly with out-of-range days", { kind: "weekly", days: [9] }],
+    ["an unknown recurrence kind", { kind: "monthly" }],
+  ])("rejects %s as a validation error on 'recurrence'", async (_label, bad) => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    const result = await createTemplate(ports, parentCtx, {
+      title: "Make the bed",
+      points: 5,
+      recurrence: bad as unknown as Recurrence,
       assignedMemberId: kid.id,
     });
     expect(result.ok).toBe(false);

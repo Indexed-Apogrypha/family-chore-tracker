@@ -68,6 +68,17 @@ describe("isDue — one-off (none)", () => {
   });
 });
 
+describe("isDue — defensive default", () => {
+  it("returns false (never undefined) for an unknown recurrence kind", () => {
+    // A malformed recurrence shouldn't ever be persisted, but if one slips
+    // through it must read as not-due rather than fall off the switch.
+    const malformed = template({
+      kind: "monthly",
+    } as unknown as Recurrence);
+    expect(isDue(malformed, MONDAY)).toBe(false);
+  });
+});
+
 describe("weekday", () => {
   it("maps ISO dates to 0=Sunday … 6=Saturday, timezone-independent", () => {
     expect(weekday(SUNDAY)).toBe(0);

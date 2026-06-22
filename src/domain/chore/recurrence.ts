@@ -22,6 +22,14 @@ export function isDue(template: ChoreTemplate, date: IsoDate): boolean {
       return true;
     case "weekly":
       return recurrence.days.includes(weekday(date));
+    default: {
+      // Exhaustiveness: a new recurrence kind fails to compile here. Malformed
+      // runtime data (untrusted JSON that slipped past `requireRecurrence`)
+      // reads as not-due rather than falling off the switch as `undefined`.
+      const _exhaustive: never = recurrence;
+      void _exhaustive;
+      return false;
+    }
   }
 }
 
