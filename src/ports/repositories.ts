@@ -43,6 +43,16 @@ export interface MemberRepository {
     pin: string;
   }): Promise<Member>;
   addMember(input: Omit<Member, "id">): Promise<Member>;
+  /**
+   * Verify a kid's PIN server-side and return the kid, or `null` for an
+   * unknown/cross-family/non-kid member or a wrong PIN. The caller maps `null`
+   * to `bad_pin` so existence never leaks (§3.1).
+   */
+  verifyKidPin(
+    familyId: FamilyId,
+    id: MemberId,
+    pin: string,
+  ): Promise<Member | null>;
   getMember(familyId: FamilyId, id: MemberId): Promise<Member | null>;
   listMembers(familyId: FamilyId): Promise<Member[]>;
 }

@@ -58,6 +58,13 @@ export function inMemoryMemberRepository(): MemberRepository {
       return member;
     },
 
+    async verifyKidPin(family, id, pin) {
+      const member = members.get(id);
+      if (!member || member.familyId !== family) return null;
+      if (member.kind !== "kid" || member.pinHash === undefined) return null;
+      return member.pinHash === fakePinHash(pin) ? member : null;
+    },
+
     async getMember(family, id) {
       const member = members.get(id);
       return member && member.familyId === family ? member : null;
