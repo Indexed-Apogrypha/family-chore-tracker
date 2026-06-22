@@ -7,6 +7,8 @@ import {
   createOneOff,
   createTemplate,
   getTodayBoard,
+  listTemplates,
+  setTemplateActive,
 } from "@/usecases/chores";
 import { addKid } from "@/usecases/members";
 import { createFamily } from "@/usecases/family";
@@ -382,6 +384,123 @@ describe("createOneOff (parent-only, §6)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok && result.error.code === "not_found") {
       expect(result.error.entity).toBe("member");
+    }
+  });
+});
+
+describe("listTemplates (parent-only)", () => {
+  it("lists the acting family's templates, scoped to the family", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+
+    // A second family's template must not leak.
+    const other = await withFamilyAndKid(ports);
+    unwrap(
+      await createTemplate(ports, other.parentCtx, {
+        title: "Other chore",
+        points: 1,
+        recurrence: { kind: "daily" },
+        assignedMemberId: other.kid.id,
+      }),
+    );
+
+    const result = unwrap(await listTemplates(ports, parentCtx));
+    expect(result.map((t) => t.title)).toEqual(["Make the bed"]);
+  });
+
+  it("forbids a kid actor", async () => {
+    const { ports, kid } = await withFamilyAndKid();
+    const result = await listTemplates(ports, memberContext(kid));
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "forbidden") {
+      expect(result.error.need).toBe("parent");
+    }
+  });
+});
+
+describe("setTemplateActive (parent-only)", () => {
+  it("deactivating stops future lazy generation; reactivating resumes it", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    const template = unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+
+    // Deactivate, then a board read for a fresh day generates nothing.
+    const off = unwrap(
+      await setTemplateActive(ports, parentCtx, {
+        templateId: template.id,
+        active: false,
+      }),
+    );
+    expect(off.active).toBe(false);
+    const sunday = unwrap(
+      await getTodayBoard(ports, parentCtx, { memberId: kid.id, date: SUNDAY }),
+    );
+    expect(sunday).toHaveLength(0);
+
+    // Reactivate → generation resumes.
+    unwrap(
+      await setTemplateActive(ports, parentCtx, {
+        templateId: template.id,
+        active: true,
+      }),
+    );
+    const monday = unwrap(
+      await getTodayBoard(ports, parentCtx, { memberId: kid.id, date: MONDAY }),
+    );
+    expect(monday).toHaveLength(1);
+  });
+
+  it("forbids a kid actor", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    const template = unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+    const result = await setTemplateActive(ports, memberContext(kid), {
+      templateId: template.id,
+      active: false,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "forbidden") {
+      expect(result.error.need).toBe("parent");
+    }
+  });
+
+  it("resolves an unknown or cross-family template to not_found", async () => {
+    const { ports, parentCtx } = await withFamilyAndKid();
+    const other = await withFamilyAndKid(ports);
+    const otherTemplate = unwrap(
+      await createTemplate(ports, other.parentCtx, {
+        title: "Other chore",
+        points: 1,
+        recurrence: { kind: "daily" },
+        assignedMemberId: other.kid.id,
+      }),
+    );
+    const result = await setTemplateActive(ports, parentCtx, {
+      templateId: otherTemplate.id,
+      active: false,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "not_found") {
+      expect(result.error.entity).toBe("template");
     }
   });
 });

@@ -30,6 +30,8 @@ next-env.d.ts
 coverage/
 .nyc_output/
 *.lcov
+# Playwright MCP scratch (snapshots/screenshots from local UI smokes).
+.playwright-mcp/
 
 # ---- Logs ----
 logs/

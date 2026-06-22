@@ -30,6 +30,11 @@ export default async function Home() {
       <h1>Family Chore Tracker</h1>
       <p className="board-link">
         <Link href="/board">View today&rsquo;s chores →</Link>
+        {ctx.actor.kind === "parent" ? (
+          <Link href="/templates" className="manage-link">
+            Manage chores →
+          </Link>
+        ) : null}
       </p>
       <ProfileSwitcher
         members={members}

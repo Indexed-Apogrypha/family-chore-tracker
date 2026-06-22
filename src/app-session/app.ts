@@ -7,9 +7,12 @@ import {
   type CreateOneOffInput,
   type CreateTemplateInput,
   type GetTodayBoardInput,
+  type SetTemplateActiveInput,
   createOneOff,
   createTemplate,
   getTodayBoard,
+  listTemplates,
+  setTemplateActive,
 } from "@/usecases/chores";
 import { type CreateFamilyInput, createFamily } from "@/usecases/family";
 import {
@@ -41,6 +44,12 @@ export interface Session {
   createTemplate(input: CreateTemplateInput): Promise<Result<ChoreTemplate>>;
   /** Create a one-off chore (templateId null) — parent-only (§6). */
   createOneOff(input: CreateOneOffInput): Promise<Result<ChoreInstance>>;
+  /** List the bound family's chore templates — parent-only (§6, §8). */
+  listTemplates(): Promise<Result<ChoreTemplate[]>>;
+  /** Activate/deactivate a template — parent-only (§6, §7.3). */
+  setTemplateActive(
+    input: SetTemplateActiveInput,
+  ): Promise<Result<ChoreTemplate>>;
   /** A member's chore board for the day, materializing due instances — any family member (§7.3). */
   getTodayBoard(input: GetTodayBoardInput): Promise<Result<ChoreInstance[]>>;
 }
@@ -70,6 +79,9 @@ export function makeApp(ports: Ports): App {
           createTemplate(ports, ctx, input),
         createOneOff: (input: CreateOneOffInput) =>
           createOneOff(ports, ctx, input),
+        listTemplates: () => listTemplates(ports, ctx),
+        setTemplateActive: (input: SetTemplateActiveInput) =>
+          setTemplateActive(ports, ctx, input),
         getTodayBoard: (input: GetTodayBoardInput) =>
           getTodayBoard(ports, ctx, input),
       };
