@@ -1,7 +1,9 @@
+import type { ChoreTemplate } from "@/domain/chore/types";
 import type { Family, Member } from "@/domain/family/types";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
+import { type CreateTemplateInput, createTemplate } from "@/usecases/chores";
 import { type CreateFamilyInput, createFamily } from "@/usecases/family";
 import {
   type AddKidInput,
@@ -28,6 +30,8 @@ export interface Session {
   verifyKidPin(input: VerifyKidPinInput): Promise<Result<Member>>;
   /** Select the active profile: parent (no PIN) or a kid (PIN-gated) — §3.1. */
   switchProfile(input: SwitchProfileInput): Promise<Result<Member>>;
+  /** Create a chore template under the bound family — parent-only (§8.1). */
+  createTemplate(input: CreateTemplateInput): Promise<Result<ChoreTemplate>>;
 }
 
 export interface App {
@@ -51,6 +55,8 @@ export function makeApp(ports: Ports): App {
           verifyKidPin(ports, ctx, input),
         switchProfile: (input: SwitchProfileInput) =>
           switchProfile(ports, ctx, input),
+        createTemplate: (input: CreateTemplateInput) =>
+          createTemplate(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {
