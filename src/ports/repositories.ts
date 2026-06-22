@@ -67,6 +67,17 @@ export interface ChoreRepository {
   createTemplate(input: Omit<ChoreTemplate, "id">): Promise<ChoreTemplate>;
   listTemplates(familyId: FamilyId): Promise<ChoreTemplate[]>;
   /**
+   * Flip a template's `active` flag (parent management). Returns the updated
+   * template, or `null` for an unknown/cross-family id (mutating nothing).
+   * Deactivating stops future lazy generation — `getTodayBoard` skips inactive
+   * templates (§6, §7.3).
+   */
+  setTemplateActive(
+    familyId: FamilyId,
+    id: TemplateId,
+    active: boolean,
+  ): Promise<ChoreTemplate | null>;
+  /**
    * Lazily materialize a template-generated instance. **Idempotent** on
    * `(templateId, assignedMemberId, dueDate)`: a repeated generation returns
    * the existing instance rather than duplicating it (§6, §7.3).

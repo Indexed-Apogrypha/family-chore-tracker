@@ -1,7 +1,7 @@
 import { isDue } from "@/domain/chore/recurrence";
 import type { ChoreInstance, ChoreTemplate } from "@/domain/chore/types";
 import type { Recurrence } from "@/domain/shared/enums";
-import type { MemberId } from "@/domain/shared/ids";
+import type { MemberId, TemplateId } from "@/domain/shared/ids";
 import { err, ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
@@ -179,4 +179,48 @@ export async function getTodayBoard(
     dueDate: date,
   });
   return ok(board);
+}
+
+/**
+ * List the acting family's chore templates for parent management (design §6, §8).
+ * Parent-only; scoped to `ctx.familyId`.
+ */
+export async function listTemplates(
+  ports: Ports,
+  ctx: RequestContext,
+): Promise<Result<ChoreTemplate[]>> {
+  const gate = requireParent(ctx);
+  if (!gate.ok) return gate;
+
+  const templates = await ports.chores.listTemplates(ctx.familyId);
+  return ok(templates);
+}
+
+export interface SetTemplateActiveInput {
+  templateId: TemplateId;
+  active: boolean;
+}
+
+/**
+ * Activate or deactivate a template (design §6, §7.3). Parent-only.
+ * Deactivating stops future lazy generation — `getTodayBoard` skips inactive
+ * templates. An unknown/cross-family template resolves to `not_found` (§8.3).
+ */
+export async function setTemplateActive(
+  ports: Ports,
+  ctx: RequestContext,
+  input: SetTemplateActiveInput,
+): Promise<Result<ChoreTemplate>> {
+  const gate = requireParent(ctx);
+  if (!gate.ok) return gate;
+
+  const updated = await ports.chores.setTemplateActive(
+    ctx.familyId,
+    input.templateId,
+    input.active,
+  );
+  if (!updated) {
+    return err({ code: "not_found", entity: "template", id: input.templateId });
+  }
+  return ok(updated);
 }

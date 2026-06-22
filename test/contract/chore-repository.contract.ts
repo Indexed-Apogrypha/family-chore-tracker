@@ -99,6 +99,32 @@ export function runChoreRepositoryContract(
       expect(await repo.getInstance(familyId("other"), a.id)).toBeNull();
     });
 
+    it("setTemplateActive flips the active flag and is family-scoped", async () => {
+      const repo = makeRepo();
+      const template = await repo.createTemplate({
+        familyId: familyId("f1"),
+        title: "Dishes",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: memberId("m1"),
+        active: true,
+      });
+
+      const deactivated = await repo.setTemplateActive(
+        familyId("f1"),
+        template.id,
+        false,
+      );
+      expect(deactivated?.active).toBe(false);
+      expect((await repo.listTemplates(familyId("f1")))[0].active).toBe(false);
+
+      // Cross-family writes resolve to null and mutate nothing (mirrors RLS).
+      expect(
+        await repo.setTemplateActive(familyId("other"), template.id, true),
+      ).toBeNull();
+      expect((await repo.listTemplates(familyId("f1")))[0].active).toBe(false);
+    });
+
     it("setInstanceStatus transitions an instance", async () => {
       const repo = makeRepo();
       const a = await repo.upsertGeneratedInstance(genInput());
