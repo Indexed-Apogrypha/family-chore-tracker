@@ -170,5 +170,15 @@ export function supabaseMemberRepository(
       if (error) throw error;
       return ((data ?? []) as MemberRow[]).map(toMember);
     },
+
+    async findByAuthUserId(authUserId) {
+      const { data, error } = await client
+        .from("members")
+        .select(MEMBER_COLS)
+        .eq("auth_user_id", authUserId)
+        .maybeSingle();
+      if (error) throw error;
+      return data ? toMember(data as MemberRow) : null;
+    },
   };
 }

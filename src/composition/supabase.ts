@@ -1,3 +1,8 @@
+import {
+  type CookieOptions,
+  createBrowserClient,
+  createServerClient,
+} from "@supabase/ssr";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 
 /**
@@ -19,4 +24,37 @@ export function createServiceRoleClient(
   return createClient(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+/**
+ * The cookie bridge the caller (middleware / route handler) supplies so the auth
+ * client can read and write the session cookies it owns.
+ */
+export interface SupabaseServerCookies {
+  getAll(): { name: string; value: string }[];
+  setAll(
+    cookies: { name: string; value: string; options: CookieOptions }[],
+  ): void;
+}
+
+/**
+ * Cookie-aware **server** auth client (anon key, design §3.1). The browser-safe
+ * `NEXT_PUBLIC_*` vars are read here — the one env-reading module — which both
+ * satisfies the dependency-rule guard and lets Next inline them for the browser
+ * factory below.
+ */
+export function createSupabaseServerClient(cookies: SupabaseServerCookies) {
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies },
+  );
+}
+
+/** Browser auth client (anon key) — safe to use from Client Components. */
+export function createSupabaseBrowserClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
 }

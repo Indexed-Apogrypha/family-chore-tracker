@@ -17,5 +17,8 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.supabase.test.ts"],
+    // The suites share one live DB and wipe accounts tables — run them one file
+    // at a time so they don't race.
+    fileParallelism: false,
   },
 });

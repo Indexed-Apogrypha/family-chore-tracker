@@ -73,5 +73,11 @@ export function inMemoryMemberRepository(): MemberRepository {
     async listMembers(family) {
       return [...members.values()].filter((m) => m.familyId === family);
     },
+
+    async findByAuthUserId(authUserId) {
+      return (
+        [...members.values()].find((m) => m.authUserId === authUserId) ?? null
+      );
+    },
   };
 }

@@ -118,5 +118,16 @@ export function runMemberRepositoryContract(
       });
       expect(await repo.verifyKidPin(b.family.id, kid.id, "1234")).toBeNull();
     });
+
+    it("findByAuthUserId returns the founder for a known auth user, null otherwise (§3.1)", async () => {
+      const repo = makeRepo();
+      const { founder } = await repo.createFamily({
+        name: "F",
+        founderDisplayName: "P",
+        authUserId: "auth-xyz",
+      });
+      expect(await repo.findByAuthUserId("auth-xyz")).toEqual(founder);
+      expect(await repo.findByAuthUserId("unknown")).toBeNull();
+    });
   });
 }

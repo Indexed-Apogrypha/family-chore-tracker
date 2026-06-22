@@ -43,12 +43,15 @@ describe("buildPorts", () => {
     expect(ports.points).toBeDefined();
   });
 
-  it("refuses to build a real judge in M0 (lands in M4)", () => {
-    expect(() =>
-      buildPorts({
-        judge: { provider: "anthropic", apiKey: "a" },
-        persistence: { kind: "in-memory" },
-      }),
-    ).toThrow(/M4/);
+  it("defers the real judge to M4: builds, but evaluate() rejects", async () => {
+    // buildPorts must boot with provider keys present (the auth routes need the
+    // member repo, not the judge); the M4 error surfaces only on use.
+    const ports = buildPorts({
+      judge: { provider: "anthropic", apiKey: "a" },
+      persistence: { kind: "in-memory" },
+    });
+    await expect(
+      ports.judge.evaluate({ path: "p" }, { title: "Dishes" }),
+    ).rejects.toThrow(/M4/);
   });
 });

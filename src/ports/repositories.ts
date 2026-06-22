@@ -55,6 +55,12 @@ export interface MemberRepository {
   ): Promise<Member | null>;
   getMember(familyId: FamilyId, id: MemberId): Promise<Member | null>;
   listMembers(familyId: FamilyId): Promise<Member[]>;
+  /**
+   * Resolve the parent member backing a Supabase Auth user, or `null` if none
+   * yet (the first-login bootstrap signal). Not family-scoped — `authUserId` is
+   * the global key (unique). Used on the parent login path (§3.1, §8.3).
+   */
+  findByAuthUserId(authUserId: string): Promise<Member | null>;
 }
 
 export interface ChoreRepository {

@@ -25,10 +25,18 @@ function selectJudge(config: JudgeConfig): JudgePort {
     case "fake":
       return fakeJudge();
     case "anthropic":
-    case "gemini":
-      throw new Error(
-        `the real '${config.provider}' judge adapter lands in M4`,
-      );
+    case "gemini": {
+      // The real provider adapters land in M4. Until then, a stub that fails
+      // only when actually invoked — nothing calls the judge before M4, so
+      // buildPorts() still boots with provider keys present (e.g. for the auth
+      // routes, which need the member repository, not the judge).
+      const provider = config.provider;
+      return {
+        async evaluate() {
+          throw new Error(`the real '${provider}' judge adapter lands in M4`);
+        },
+      };
+    }
     default: {
       const _exhaustive: never = config;
       throw new Error(`unknown judge provider: ${JSON.stringify(_exhaustive)}`);
