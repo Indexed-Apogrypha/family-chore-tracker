@@ -19,3 +19,127 @@ main {
   padding: 2rem 1.5rem;
   line-height: 1.5;
 }
+
+h2 {
+  margin-top: 1.75rem;
+  font-size: 1.1rem;
+}
+
+.hint {
+  color: color-mix(in srgb, currentColor 65%, transparent);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #d22d2d;
+  font-size: 0.9rem;
+  margin: 0.5rem 0 0;
+}
+
+/* Forms (login, signup, add-kid) */
+.auth-form,
+.add-kid .fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 22rem;
+}
+
+.auth-form label,
+.add-kid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+input {
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+}
+
+button {
+  padding: 0.5rem 0.9rem;
+  font: inherit;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-form button,
+.add-kid button {
+  align-self: flex-start;
+  margin-top: 0.25rem;
+}
+
+/* Profile switcher */
+.switcher .acting {
+  padding: 0.6rem 0.8rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+
+.tiles {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.75rem;
+}
+
+.tile {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.9rem;
+  text-align: left;
+}
+
+.tile-name {
+  font-weight: 600;
+}
+
+.tile-kind {
+  font-size: 0.75rem;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+}
+
+.pin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 0.5rem;
+}
+
+.pin-form label {
+  font-size: 0.8rem;
+}
+
+.pin-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.add-kid,
+.switcher .logout {
+  margin-top: 1.75rem;
+}
+
+.switcher .logout {
+  display: block;
+}

@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 
 import { memberContext } from "@/app-session/context";
-import { buildPorts } from "@/composition/container";
+import { setActiveMember } from "@/composition/request";
+import { serverPorts } from "@/composition/server";
 import { createSupabaseServerClient } from "@/composition/supabase";
 import { findActingParent } from "@/usecases/auth";
 
@@ -38,9 +39,11 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "invalid_credentials" }, { status: 401 });
   }
 
-  const parent = await findActingParent(buildPorts(), data.user.id);
+  const parent = await findActingParent(serverPorts(), data.user.id);
   if (!parent.ok) {
     return Response.json({ error: "no_family" }, { status: 409 });
   }
+  // Default the active profile to the parent who just logged in (§3.1).
+  await setActiveMember(parent.value.id);
   return Response.json({ ok: true, ctx: memberContext(parent.value) });
 }

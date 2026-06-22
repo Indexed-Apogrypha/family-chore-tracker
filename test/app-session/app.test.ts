@@ -33,4 +33,31 @@ describe("makeApp (keyless boot)", () => {
     expect(session.ctx.actor.kind).toBe("parent");
     expect(session.ctx.familyId).toBe(familyId("f1"));
   });
+
+  it("exposes switchProfile, delegating active-profile selection (§3.1)", async () => {
+    const a = app();
+    const created = await a.createFamily({
+      name: "Fam",
+      founderDisplayName: "Parent",
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const { family, founder } = created.value;
+    const session = a.as({
+      familyId: family.id,
+      actor: { kind: "parent", memberId: founder.id },
+    });
+    const kid = await session.addKid({ displayName: "Rae", pin: "1234" });
+    if (!kid.ok) throw new Error("addKid failed");
+
+    const toKid = await session.switchProfile({
+      memberId: kid.value.id,
+      pin: "1234",
+    });
+    expect(toKid.ok).toBe(true);
+    if (toKid.ok) expect(toKid.value.id).toBe(kid.value.id);
+
+    const toParent = await session.switchProfile({ memberId: founder.id });
+    expect(toParent.ok).toBe(true);
+    if (toParent.ok) expect(toParent.value.kind).toBe("parent");
+  });
 });
