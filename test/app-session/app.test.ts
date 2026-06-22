@@ -60,4 +60,32 @@ describe("makeApp (keyless boot)", () => {
     expect(toParent.ok).toBe(true);
     if (toParent.ok) expect(toParent.value.kind).toBe("parent");
   });
+
+  it("exposes createTemplate, delegating to the parent-only use-case (§8.1)", async () => {
+    const a = app();
+    const created = await a.createFamily({
+      name: "Fam",
+      founderDisplayName: "Parent",
+    });
+    if (!created.ok) throw new Error("setup failed");
+    const { family, founder } = created.value;
+    const session = a.as({
+      familyId: family.id,
+      actor: { kind: "parent", memberId: founder.id },
+    });
+    const kid = await session.addKid({ displayName: "Rae", pin: "1234" });
+    if (!kid.ok) throw new Error("addKid failed");
+
+    const template = await session.createTemplate({
+      title: "Make the bed",
+      points: 5,
+      recurrence: { kind: "daily" },
+      assignedMemberId: kid.value.id,
+    });
+    expect(template.ok).toBe(true);
+    if (template.ok) {
+      expect(template.value.active).toBe(true);
+      expect(template.value.assignedMemberId).toBe(kid.value.id);
+    }
+  });
 });
