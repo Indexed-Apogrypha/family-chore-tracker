@@ -11,6 +11,7 @@ import type { RequestContext } from "@/ports/context";
 import { requireParent } from "./authz";
 import {
   optionalDescription,
+  requireDate,
   requireName,
   requirePoints,
   requireRecurrence,
@@ -71,6 +72,58 @@ export async function createTemplate(
     active: true,
   });
   return ok(template);
+}
+
+export interface CreateOneOffInput {
+  title: string;
+  points: number;
+  assignedMemberId: MemberId;
+  dueDate: IsoDate;
+}
+
+/**
+ * Create a one-off chore instance under the acting family (design §6). Parent-only.
+ * The instance carries `templateId: null` and sits **outside** the lazy-generation
+ * idempotency key, so `getTodayBoard` never duplicates or regenerates it.
+ *
+ * The assignee must be a member of the acting family — a cross-family or unknown
+ * id resolves to `not_found`, mirroring RLS (§8.3).
+ */
+export async function createOneOff(
+  ports: Ports,
+  ctx: RequestContext,
+  input: CreateOneOffInput,
+): Promise<Result<ChoreInstance>> {
+  const gate = requireParent(ctx);
+  if (!gate.ok) return gate;
+
+  const title = requireName("title", input.title);
+  if (!title.ok) return title;
+  const points = requirePoints(input.points);
+  if (!points.ok) return points;
+  const dueDate = requireDate("dueDate", input.dueDate);
+  if (!dueDate.ok) return dueDate;
+
+  const assignee = await ports.members.getMember(
+    ctx.familyId,
+    input.assignedMemberId,
+  );
+  if (!assignee) {
+    return err({
+      code: "not_found",
+      entity: "member",
+      id: input.assignedMemberId,
+    });
+  }
+
+  const instance = await ports.chores.createOneOff({
+    familyId: ctx.familyId,
+    title: title.value,
+    points: points.value,
+    assignedMemberId: input.assignedMemberId,
+    dueDate: dueDate.value,
+  });
+  return ok(instance);
 }
 
 export interface GetTodayBoardInput {

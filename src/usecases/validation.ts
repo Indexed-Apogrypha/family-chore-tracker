@@ -1,6 +1,9 @@
 import type { Recurrence } from "@/domain/shared/enums";
 import { err, ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
+import type { IsoDate } from "@/ports/clock";
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Max length for the free-text names use-cases accept. */
 export const MAX_NAME_LENGTH = 80;
@@ -59,6 +62,34 @@ export function requirePoints(value: number): Result<number> {
       code: "validation",
       field: "points",
       message: "points must be a positive whole number.",
+    });
+  }
+  return ok(value);
+}
+
+/**
+ * Require a well-formed `YYYY-MM-DD` calendar date. Rejects malformed strings
+ * and impossible dates (e.g. `2026-02-30`) by round-tripping through `Date.UTC`.
+ */
+export function requireDate(field: string, value: string): Result<IsoDate> {
+  if (!ISO_DATE.test(value)) {
+    return err({
+      code: "validation",
+      field,
+      message: `${field} must be a YYYY-MM-DD date.`,
+    });
+  }
+  const [year, month, day] = value.split("-").map(Number);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  const realDate =
+    dt.getUTCFullYear() === year &&
+    dt.getUTCMonth() === month - 1 &&
+    dt.getUTCDate() === day;
+  if (!realDate) {
+    return err({
+      code: "validation",
+      field,
+      message: `${field} is not a real calendar date.`,
     });
   }
   return ok(value);

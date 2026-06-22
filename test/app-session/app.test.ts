@@ -88,12 +88,26 @@ describe("makeApp (keyless boot)", () => {
       expect(template.value.assignedMemberId).toBe(kid.value.id);
     }
 
-    // The freshly created daily template materializes onto the board.
-    const board = await session.getTodayBoard({ memberId: kid.value.id });
+    // A one-off due a chosen day; the daily template is due every day, so an
+    // explicit board date keeps this deterministic under the system clock.
+    const day = "2026-06-21";
+    const oneOff = await session.createOneOff({
+      title: "Wash the car",
+      points: 10,
+      assignedMemberId: kid.value.id,
+      dueDate: day,
+    });
+    expect(oneOff.ok).toBe(true);
+    if (oneOff.ok) expect(oneOff.value.templateId).toBeNull();
+
+    // The daily template + the one-off materialize onto the board for that day.
+    const board = await session.getTodayBoard({ memberId: kid.value.id, date: day });
     expect(board.ok).toBe(true);
     if (board.ok) {
-      expect(board.value).toHaveLength(1);
-      expect(board.value[0].title).toBe("Make the bed");
+      expect(board.value.map((i) => i.title).sort()).toEqual([
+        "Make the bed",
+        "Wash the car",
+      ]);
     }
   });
 });

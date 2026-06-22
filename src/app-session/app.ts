@@ -4,8 +4,10 @@ import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 import {
+  type CreateOneOffInput,
   type CreateTemplateInput,
   type GetTodayBoardInput,
+  createOneOff,
   createTemplate,
   getTodayBoard,
 } from "@/usecases/chores";
@@ -37,6 +39,8 @@ export interface Session {
   switchProfile(input: SwitchProfileInput): Promise<Result<Member>>;
   /** Create a chore template under the bound family — parent-only (§8.1). */
   createTemplate(input: CreateTemplateInput): Promise<Result<ChoreTemplate>>;
+  /** Create a one-off chore (templateId null) — parent-only (§6). */
+  createOneOff(input: CreateOneOffInput): Promise<Result<ChoreInstance>>;
   /** A member's chore board for the day, materializing due instances — any family member (§7.3). */
   getTodayBoard(input: GetTodayBoardInput): Promise<Result<ChoreInstance[]>>;
 }
@@ -64,6 +68,8 @@ export function makeApp(ports: Ports): App {
           switchProfile(ports, ctx, input),
         createTemplate: (input: CreateTemplateInput) =>
           createTemplate(ports, ctx, input),
+        createOneOff: (input: CreateOneOffInput) =>
+          createOneOff(ports, ctx, input),
         getTodayBoard: (input: GetTodayBoardInput) =>
           getTodayBoard(ports, ctx, input),
       };
