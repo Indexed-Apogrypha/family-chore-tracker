@@ -63,10 +63,14 @@ test/{contract,usecases,architecture,domain,adapters,composition}/
 
 ## The four seams
 
-`judge` · `repositories` · `photo-storage` · `clock`. Each is one interface with
-≥2 adapters selected at the composition root. The in-memory/fake side is the
-**executable spec**; one **contract suite per seam** runs both sides to prove them
-interchangeable. Supabase adapters (M3/M6) run through the *same* suites.
+`judge` · `repositories` · `photo-storage` · `clock`. Each is one interface
+**designed for ≥2 adapters**, selected at the composition root. M0 ships the
+keyless/fake side — the **executable spec**; the real adapters land with their
+feature (storage → M3, judge → M4, persistence → M1/M6), so today only `clock`
+has two live adapters and the rest pair the fake side with a stub that throws
+until then. A **contract suite per seam** (the `repositories` seam has one per
+repository) proves the two sides interchangeable; it runs the in-memory side
+today, and the Supabase adapters join the *same* suites in M3/M6.
 
 - Adapters are **factory functions**.
 - In-memory repos are **family-scoped**: every method takes `familyId`, and
@@ -83,9 +87,11 @@ interchangeable. Supabase adapters (M3/M6) run through the *same* suites.
   *values*, not exceptions, for compiler-checked exhaustive UI handling. Adapters
   may throw on true infra faults; use-cases catch and map (e.g. `judge_unavailable`).
 - **Capability is enforced inside each use-case** against `ctx.actor`
-  (`{ kind: 'parent' | 'kid', memberId }`). Identity is proven at the edge; the
-  PIN is an app-level gate, not a security boundary (spec §3.1).
-- Every use-case re-checks `ctx.familyId` against loaded entities.
+  (`{ kind: 'parent' | 'kid', memberId }`) — the convention M1+ use-cases follow
+  (the M0 `createFamily` bootstrap is the spec's explicit no-ctx exception).
+  Identity is proven at the edge; the PIN is an app-level gate, not a security
+  boundary (spec §3.1).
+- Each `ctx`-bound use-case re-checks `ctx.familyId` against loaded entities.
 
 ## Commands
 
