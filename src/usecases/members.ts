@@ -1,5 +1,6 @@
 import type { Member } from "@/domain/family/types";
-import { ok } from "@/domain/shared/result";
+import type { MemberId } from "@/domain/shared/ids";
+import { err, ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
@@ -9,6 +10,11 @@ import { requireName, requirePin } from "./validation";
 
 export interface AddKidInput {
   displayName: string;
+  pin: string;
+}
+
+export interface VerifyKidPinInput {
+  memberId: MemberId;
   pin: string;
 }
 
@@ -47,4 +53,24 @@ export async function listMembers(
 ): Promise<Result<Member[]>> {
   const members = await ports.members.listMembers(ctx.familyId);
   return ok(members);
+}
+
+/**
+ * Verify a kid's PIN and yield the kid so the caller can adopt it as the active
+ * profile (design §3.1). Any family member may call it. Unknown/cross-family/
+ * non-kid members and wrong PINs all return `bad_pin` — no existence leak, and
+ * no kid token is minted (the PIN is an app-level gate, not a security boundary).
+ */
+export async function verifyKidPin(
+  ports: Ports,
+  ctx: RequestContext,
+  input: VerifyKidPinInput,
+): Promise<Result<Member>> {
+  const kid = await ports.members.verifyKidPin(
+    ctx.familyId,
+    input.memberId,
+    input.pin,
+  );
+  if (!kid) return err({ code: "bad_pin" });
+  return ok(kid);
 }

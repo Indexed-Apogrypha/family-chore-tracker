@@ -3,7 +3,13 @@ import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 import { type CreateFamilyInput, createFamily } from "@/usecases/family";
-import { type AddKidInput, addKid, listMembers } from "@/usecases/members";
+import {
+  type AddKidInput,
+  type VerifyKidPinInput,
+  addKid,
+  listMembers,
+  verifyKidPin,
+} from "@/usecases/members";
 
 /**
  * The session edge (design §4.2). `app.as(ctx)` binds the request context once;
@@ -17,6 +23,8 @@ export interface Session {
   addKid(input: AddKidInput): Promise<Result<Member>>;
   /** List the bound family's members — any family member (§8.3). */
   listMembers(): Promise<Result<Member[]>>;
+  /** Verify a kid's PIN to switch the active profile — any family member (§3.1). */
+  verifyKidPin(input: VerifyKidPinInput): Promise<Result<Member>>;
 }
 
 export interface App {
@@ -36,6 +44,8 @@ export function makeApp(ports: Ports): App {
         ctx,
         addKid: (input: AddKidInput) => addKid(ports, ctx, input),
         listMembers: () => listMembers(ports, ctx),
+        verifyKidPin: (input: VerifyKidPinInput) =>
+          verifyKidPin(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {

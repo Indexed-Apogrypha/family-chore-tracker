@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { memberContext } from "@/app-session/context";
+import { memberId } from "@/domain/shared/ids";
 import type { Result } from "@/domain/shared/result";
-import { addKid, listMembers } from "@/usecases/members";
+import { addKid, listMembers, verifyKidPin } from "@/usecases/members";
 import { createFamily } from "@/usecases/family";
 
 import { inMemoryPorts } from "./harness";
@@ -113,5 +114,50 @@ describe("listMembers (any family member, §8.3)", () => {
     );
     const result = await listMembers(ports, memberContext(kid));
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("verifyKidPin (any family member, §3.1)", () => {
+  it("returns the kid for the right pin, ready to become the active profile", async () => {
+    const { ports, parentCtx } = await withParent();
+    const kid = unwrap(
+      await addKid(ports, parentCtx, { displayName: "Rae", pin: "1234" }),
+    );
+    const result = await verifyKidPin(ports, parentCtx, {
+      memberId: kid.id,
+      pin: "1234",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.id).toBe(kid.id);
+      // the caller adopts the kid as the active profile (no token minted, §3.1)
+      expect(memberContext(result.value).actor).toEqual({
+        kind: "kid",
+        memberId: kid.id,
+      });
+    }
+  });
+
+  it("rejects a wrong pin with bad_pin", async () => {
+    const { ports, parentCtx } = await withParent();
+    const kid = unwrap(
+      await addKid(ports, parentCtx, { displayName: "Rae", pin: "1234" }),
+    );
+    const result = await verifyKidPin(ports, parentCtx, {
+      memberId: kid.id,
+      pin: "0000",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("bad_pin");
+  });
+
+  it("rejects an unknown member id with bad_pin (no existence leak)", async () => {
+    const { ports, parentCtx } = await withParent();
+    const result = await verifyKidPin(ports, parentCtx, {
+      memberId: memberId("nope"),
+      pin: "1234",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("bad_pin");
   });
 });

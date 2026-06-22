@@ -91,5 +91,32 @@ export function runMemberRepositoryContract(
       expect(await repo.getMember(a.family.id, a.founder.id)).toEqual(a.founder);
       expect(await repo.getMember(b.family.id, a.founder.id)).toBeNull();
     });
+
+    it("verifyKidPin returns the kid for the right pin, null otherwise (§3.1)", async () => {
+      const repo = makeRepo();
+      const { family } = await repo.createFamily({
+        name: "F",
+        founderDisplayName: "P",
+      });
+      const kid = await repo.addKid({
+        familyId: family.id,
+        displayName: "Rae",
+        pin: "1234",
+      });
+      expect(await repo.verifyKidPin(family.id, kid.id, "1234")).toEqual(kid);
+      expect(await repo.verifyKidPin(family.id, kid.id, "0000")).toBeNull();
+    });
+
+    it("verifyKidPin is family-scoped: another family's kid is null (§9)", async () => {
+      const repo = makeRepo();
+      const a = await repo.createFamily({ name: "A", founderDisplayName: "Pa" });
+      const b = await repo.createFamily({ name: "B", founderDisplayName: "Pb" });
+      const kid = await repo.addKid({
+        familyId: a.family.id,
+        displayName: "Rae",
+        pin: "1234",
+      });
+      expect(await repo.verifyKidPin(b.family.id, kid.id, "1234")).toBeNull();
+    });
   });
 }
