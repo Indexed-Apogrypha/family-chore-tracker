@@ -37,7 +37,7 @@ export async function deriveIdentity(): Promise<Identity | null> {
 
   if (isRealMode()) {
     // Read-only auth client: server components can't write cookies; the
-    // middleware already refreshed the session on this request (§3.1).
+    // proxy already refreshed the session on this request (§3.1).
     const supabase = createSupabaseServerClient({
       getAll: () => store.getAll(),
       setAll: () => {},

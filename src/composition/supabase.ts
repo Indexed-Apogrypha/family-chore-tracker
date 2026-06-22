@@ -27,7 +27,7 @@ export function createServiceRoleClient(
 }
 
 /**
- * The cookie bridge the caller (middleware / route handler) supplies so the auth
+ * The cookie bridge the caller (proxy / route handler) supplies so the auth
  * client can read and write the session cookies it owns.
  */
 export interface SupabaseServerCookies {
