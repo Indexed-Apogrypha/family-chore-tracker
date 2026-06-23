@@ -91,6 +91,25 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      # Catch RUNTIME failures a green build can't (e.g. the Sensitive-env 500:
+      # the build succeeds but every request 500s). Staging sits behind Vercel
+      # Deployment Protection (anon → 401), so authenticate the probe with the
+      # project's Protection-Bypass-for-Automation secret. A non-200 fails the
+      # job, and because `production` is `needs: staging`, that blocks the gate.
+      - name: Smoke-check staging (runtime 200)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          code="$(curl -H "x-vercel-protection-bypass: $BYPASS" -sSL \
+            -o /dev/null -w '%{http_code}' "$url/")"
+          echo "GET $url/ (bypass) -> $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Staging smoke check failed: expected 200, got $code"
+            exit 1
+          fi
+
       - name: Alias to the stable staging URL
         if: steps.guard.outputs.ready == 'true'
         run: |
@@ -164,13 +183,20 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      # `vercel deploy --prebuilt --prod` blocks until the deployment "finishes",
-      # and that wait HANGS indefinitely on this project (the deployment reaches
-      # READY but the command never returns — observed 25min+, with AND without
-      # --skip-domain). So no single command is allowed to wait unbounded:
-      #   1) deploy --no-wait          → returns immediately with the deployment URL
-      #   2) inspect --wait --timeout  → bounded readiness gate (cannot hang)
-      #   3) promote                   → assign the production domain (fast, ~1s)
+      # Production graduation — every wait is bounded so the job can never hang,
+      # and the build is proven healthy at RUNTIME before the domain flips:
+      #   1) deploy --no-wait    → returns immediately with the deployment URL
+      #                            (the inline --prod wait HANGS on this project:
+      #                             READY but never returns, observed 25min+).
+      #   2) inspect --wait      → bounded readiness gate (cannot hang).
+      #   3) smoke (pre-promote) → curl the deployment's public URL; a runtime 500
+      #                            fails HERE, before the domain flips, so prod
+      #                            keeps serving the last-good build.
+      #   4) promote             → flip the production domain (~1s).
+      #   5) confirm (post)      → assert the production domain itself is 200.
+      # NB: promote/inspect resolve a deployment by URL and do NOT inherit the team
+      # from VERCEL_ORG_ID, so they need an explicit --scope <team-slug> — without
+      # it promote fails "Deployment belongs to a different team" (run 28024463409).
       - name: Deploy prebuilt artifacts to production (no-wait)
         id: deploy
         if: steps.guard.outputs.ready == 'true'
@@ -182,13 +208,44 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      - name: Wait for READY, then promote to the production domain
+      - name: Wait for the deployment to be READY (bounded)
         if: steps.guard.outputs.ready == 'true'
         run: |
-          vercel inspect "${{ steps.deploy.outputs.url }}" --wait --timeout 5m --token="$VERCEL_TOKEN"
-          vercel promote "${{ steps.deploy.outputs.url }}" --yes --token="$VERCEL_TOKEN"
+          vercel inspect "${{ steps.deploy.outputs.url }}" \
+            --wait --timeout 5m \
+            --scope matthew-harpers-projects --token="$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Smoke-check the production build (pre-promote)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          url="${{ steps.deploy.outputs.url }}"
+          code="$(curl -sSL -o /dev/null -w '%{http_code}' "$url/")"
+          echo "GET $url/ -> $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Pre-promote smoke failed: expected 200, got $code — NOT promoting."
+            exit 1
+          fi
+
+      - name: Promote the validated build to the production domain
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          vercel promote "${{ steps.deploy.outputs.url }}" --yes \
+            --scope matthew-harpers-projects --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Confirm the production domain is 200 (post-promote)
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          code="$(curl -sSL -o /dev/null -w '%{http_code}' \
+            https://family-chore-tracker-psi.vercel.app/)"
+          echo "GET https://family-chore-tracker-psi.vercel.app/ -> $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::Post-promote check failed: prod domain returned $code. Roll back: vercel rollback <prev> --token=…"
+            exit 1
+          fi
 
       - name: Summary
         if: steps.guard.outputs.ready == 'true'
