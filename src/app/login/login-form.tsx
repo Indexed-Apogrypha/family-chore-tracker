@@ -3,13 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const ERROR_TEXT: Record<string, string> = {
-  missing_fields: "Enter your email and password.",
-  invalid_credentials: "Email or password is incorrect.",
-  no_family: "That account has no family yet — create one on the signup page.",
-};
-const explain = (code?: string) =>
-  (code && ERROR_TEXT[code]) || "Could not log in. Try again.";
+import { errorMessage } from "@/app/error-copy";
+
+// Auth route codes (missing_fields / invalid_credentials / no_family) live in
+// the shared error map; this is a thin alias for the form's call sites.
+const explain = errorMessage;
 
 /** Parent login form — posts to the Supabase-backed login route (§3.1). */
 export function LoginForm() {

@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { errorMessage } from "@/app/error-copy";
+
 interface MemberDto {
   id: string;
   displayName: string;
@@ -28,14 +30,12 @@ async function postJson(url: string, body?: unknown) {
   return { ok: res.ok, error: data.error };
 }
 
-const ERROR_TEXT: Record<string, string> = {
-  bad_pin: "Wrong PIN — try again.",
+const PROFILE_ERRORS = {
   not_found: "That profile is no longer available.",
   validation: "Please fill in both a name and a PIN.",
   forbidden: "Only a parent can do that.",
 };
-const explain = (code?: string) =>
-  (code && ERROR_TEXT[code]) || "Something went wrong. Try again.";
+const explain = (code?: string) => errorMessage(code, PROFILE_ERRORS);
 
 /**
  * The parent↔kid profile switcher (design §3.1). Selecting the parent switches

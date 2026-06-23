@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { errorMessage } from "@/app/error-copy";
 import type { Recurrence } from "@/domain/shared/enums";
 
 interface TemplateDto {
@@ -37,13 +38,11 @@ const WEEKDAYS = [
   { n: 6, label: "Sat" },
 ];
 
-const ERROR_TEXT: Record<string, string> = {
-  validation: "Please check the fields and try again.",
+const TEMPLATE_ERRORS = {
   forbidden: "Only a parent can do that.",
   not_found: "That chore or kid is no longer available.",
 };
-const explain = (code?: string) =>
-  (code && ERROR_TEXT[code]) || "Something went wrong. Try again.";
+const explain = (code?: string) => errorMessage(code, TEMPLATE_ERRORS);
 
 async function postJson(url: string, body: unknown) {
   const res = await fetch(url, {
