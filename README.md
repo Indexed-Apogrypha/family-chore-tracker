@@ -117,7 +117,9 @@ only the values differ:
 
 Each real scope needs `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` (secrets)
 plus its `SUPABASE_*`, `NEXT_PUBLIC_SUPABASE_*`, and `JUDGE_GEMINI_API_KEY`. Vercel's
-native Git auto-deploy is **disabled** so the GitHub gate stays authoritative.
+native Git auto-deploy for `main` is **disabled** via [vercel.json](vercel.json)
+(`git.deploymentEnabled`) so the GitHub gate stays authoritative; CLI `--prebuilt`
+deploys and PR previews are unaffected.
 
 **Migrations** now touch two databases: apply to staging → validate → apply to prod →
 graduate; keep them backward-compatible.
