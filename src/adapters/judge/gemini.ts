@@ -39,6 +39,8 @@ export interface GeminiJudgeOptions {
  */
 export function geminiJudge(options: GeminiJudgeOptions): JudgePort {
   const { client, model, resolveImageUrl } = options;
+  // Safe cast: the adapter only uses `ok`/`status`/`arrayBuffer()`/`headers.get()`,
+  // all of which the global `fetch`'s `Response` provides.
   const fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
 
   return {
@@ -48,7 +50,8 @@ export function geminiJudge(options: GeminiJudgeOptions): JudgePort {
       if (!res.ok) {
         throw new Error(`failed to fetch chore photo: ${res.status}`);
       }
-      const mimeType = res.headers.get("content-type") ?? "image/jpeg";
+      const declared = res.headers.get("content-type");
+      const mimeType = declared?.startsWith("image/") ? declared : "image/jpeg";
       const data = Buffer.from(await res.arrayBuffer()).toString("base64");
 
       const response = await client.models.generateContent({

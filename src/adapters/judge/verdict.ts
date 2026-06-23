@@ -47,7 +47,9 @@ export function parseVerdict(text: string, model: string): Verdict {
   return {
     pass: Boolean(parsed.pass),
     confidence: clamp01(Number(parsed.confidence)),
-    reasoning: String(parsed.reasoning ?? ""),
+    // Keep reasoning non-empty so every adapter satisfies the JudgePort contract
+    // even when the model omits it (it is advisory display text, not control flow).
+    reasoning: String(parsed.reasoning ?? "").trim() || "No reasoning provided.",
     model,
   };
 }

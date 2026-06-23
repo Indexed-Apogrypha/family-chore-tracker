@@ -83,6 +83,17 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
     };
   }
 
+  // A real judge needs a fetchable photo URL, but in-memory storage mints
+  // `memory://` URLs no vision API can read — so that combination would fail
+  // opaquely (`judge_unavailable`) on every submission. Reject it loudly.
+  if (config.judge.provider !== "fake") {
+    throw new Error(
+      `the '${config.judge.provider}' judge requires Supabase storage — in-memory ` +
+        "photos produce memory:// URLs the vision API can't fetch. Set SUPABASE_URL " +
+        "+ SUPABASE_SERVICE_ROLE_KEY, or unset the judge key to use the fake judge.",
+    );
+  }
+
   const photos = inMemoryPhotoStorage();
   return {
     judge: selectJudge(config.judge, photos),

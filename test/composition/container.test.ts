@@ -43,21 +43,30 @@ describe("buildPorts", () => {
     expect(ports.points).toBeDefined();
   });
 
-  it("wires the real Anthropic judge when its key is present (M4, lazy — no network at build)", () => {
-    // SDK clients construct lazily, so a fake key wires without a network call;
+  it("wires the real Anthropic judge over Supabase storage (M4, lazy — no network at build)", () => {
+    // SDK clients construct lazily, so fake creds wire without a network call;
     // a real call (and any infra fault → judge_unavailable) happens only on evaluate.
     const ports = buildPorts({
       judge: { provider: "anthropic", apiKey: "a", model: "claude-sonnet-4-6" },
-      persistence: { kind: "in-memory" },
+      persistence: { kind: "supabase", url: "https://x.supabase.co", serviceRoleKey: "k" },
     });
     expect(typeof ports.judge.evaluate).toBe("function");
   });
 
-  it("wires the real Gemini judge when its key is present (M4, lazy — no network at build)", () => {
+  it("wires the real Gemini judge over Supabase storage (M4, lazy — no network at build)", () => {
     const ports = buildPorts({
       judge: { provider: "gemini", apiKey: "g" },
-      persistence: { kind: "in-memory" },
+      persistence: { kind: "supabase", url: "https://x.supabase.co", serviceRoleKey: "k" },
     });
     expect(typeof ports.judge.evaluate).toBe("function");
+  });
+
+  it("rejects a real judge over in-memory storage (memory:// URLs aren't fetchable)", () => {
+    expect(() =>
+      buildPorts({
+        judge: { provider: "anthropic", apiKey: "a" },
+        persistence: { kind: "in-memory" },
+      }),
+    ).toThrow(/requires Supabase storage/);
   });
 });
