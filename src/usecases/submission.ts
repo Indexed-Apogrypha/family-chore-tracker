@@ -195,7 +195,7 @@ async function advanceToPendingReview(
   verdict: Verdict,
 ): Promise<Result<Submission>> {
   // One atomic op (a transaction on the real adapter) so the verdict + both
-  // statuses can't half-commit if persistence faults mid-advance (§7.2, M2).
+  // statuses can't half-commit if persistence faults mid-advance (§7.2).
   const advanced = await persistOp(() =>
     ports.submissions.recordVerdictAndAdvance(ctx.familyId, id, instanceId, verdict),
   );
