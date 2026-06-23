@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Family Chore Tracker">
+  <rect width="512" height="512" rx="96" fill="#2d6cd2" />
+  <rect x="146" y="128" width="220" height="272" rx="24" fill="#ffffff" />
+  <rect x="206" y="96" width="100" height="56" rx="20" fill="#ffffff" stroke="#2d6cd2" stroke-width="14" />
+  <path d="M196 268 l44 44 l84 -104" fill="none" stroke="#2e9e4f" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" />
+</svg>
