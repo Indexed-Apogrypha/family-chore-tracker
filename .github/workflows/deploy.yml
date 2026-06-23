@@ -20,6 +20,11 @@ on:
         required: false
         type: string
 
+# Least privilege: both jobs only check out code; deploys authenticate with
+# VERCEL_TOKEN, not GITHUB_TOKEN. (CodeQL: pin workflow token permissions.)
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-pipeline
   cancel-in-progress: false # never kill an in-flight production build
