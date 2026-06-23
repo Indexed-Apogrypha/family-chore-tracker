@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "node scripts/write-supabase-env-local.mjs && next dev",
+    "build": "node scripts/write-supabase-env-local.mjs && next build",
+    "start": "node scripts/write-supabase-env-local.mjs && next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
