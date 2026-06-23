@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { errorMessage } from "@/app/error-copy";
+
 export interface ReviewItemDto {
   submissionId: string;
   choreTitle: string;
@@ -12,13 +14,11 @@ export interface ReviewItemDto {
   verdict: { pass: boolean; confidence: number; reasoning: string } | null;
 }
 
-const ERROR_TEXT: Record<string, string> = {
+const REVIEW_ERRORS = {
   forbidden: "Only a parent can review.",
   not_found: "That submission is no longer available.",
   invalid_transition: "That submission was already decided — refreshing.",
 };
-const explain = (code?: string) =>
-  (code && ERROR_TEXT[code]) || "Something went wrong. Try again.";
 
 /**
  * Parent review queue (design §7.1, §8). Each pending submission shows the photo
@@ -42,7 +42,7 @@ export function ReviewQueue({ items }: { items: ReviewItemDto[] }) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
     setBusyId(null);
     if (!res.ok) {
-      setError(explain(data.error));
+      setError(errorMessage(data.error, REVIEW_ERRORS));
     }
     router.refresh();
   }

@@ -3,15 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const ERROR_TEXT: Record<string, string> = {
+import { errorMessage } from "@/app/error-copy";
+
+const CAPTURE_ERRORS = {
   forbidden: "That chore isn't yours to submit.",
   not_found: "That chore is no longer available.",
   validation: "Please choose an image and try again.",
-  too_large: "That photo is too large.",
-  judge_unavailable: "Couldn't check it just now — your photo is saved.",
 };
-const explain = (code?: string) =>
-  (code && ERROR_TEXT[code]) || "Something went wrong. Try again.";
 
 interface SubmitResult {
   error?: string;
@@ -40,7 +38,7 @@ export function ChoreCapture({ instanceId }: { instanceId: string }) {
       router.refresh();
       return;
     }
-    setError(explain(data.error));
+    setError(errorMessage(data.error, CAPTURE_ERRORS));
     setRetryId(
       data.error === "judge_unavailable" ? (data.submissionId ?? null) : null,
     );
