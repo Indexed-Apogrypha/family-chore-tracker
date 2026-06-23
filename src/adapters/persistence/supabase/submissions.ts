@@ -26,7 +26,12 @@ function toSubmission(row: SubmissionRow): Submission {
       ? { aiVerdict: row.ai_verdict as unknown as Verdict }
       : {}),
     ...(row.decided_by !== null ? { decidedBy: memberId(row.decided_by) } : {}),
-    ...(row.decided_at !== null ? { decidedAt: row.decided_at } : {}),
+    // Postgres `timestamptz` reads back as e.g. `…+00:00`; canonicalize to the
+    // app's ISO instant (`…Z`) so the value matches the in-memory adapter and
+    // the clock's `now()` (the shared contract asserts this round-trip, #117).
+    ...(row.decided_at !== null
+      ? { decidedAt: new Date(row.decided_at).toISOString() }
+      : {}),
   };
 }
 
