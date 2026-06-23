@@ -7,6 +7,8 @@ import type { InstanceStatus } from "@/domain/shared/enums";
 import { getTodayBoard } from "@/usecases/chores";
 import { listMembers } from "@/usecases/members";
 
+import { ChoreCapture } from "./chore-capture";
+
 /** Friendly labels for the instance lifecycle (design §7.1). */
 const STATUS_LABEL: Record<InstanceStatus, string> = {
   todo: "To do",
@@ -19,8 +21,8 @@ const STATUS_LABEL: Record<InstanceStatus, string> = {
  * The active profile's "today" board (design §7.3, §8.1). A thin screen: derive
  * the request context, materialize + read the day's chores through
  * `getTodayBoard` (recurring instances are generated on this read), and render
- * them with their lifecycle status. Read-only for now — photo submission lands
- * in M3. Unauthenticated devices are sent to `/login`.
+ * them with their lifecycle status. A `todo` chore gets a photo-capture control
+ * (design §7.2). Unauthenticated devices are sent to `/login`.
  */
 export default async function BoardPage() {
   const ctx = await deriveContext();
@@ -67,9 +69,13 @@ export default async function BoardPage() {
                 <span className="chore-points">{c.points} pts</span>
               </div>
               <div className="chore-meta">
-                <span className={`status status-${c.status}`}>
-                  {STATUS_LABEL[c.status]}
-                </span>
+                {c.status === "todo" ? (
+                  <ChoreCapture instanceId={c.id} />
+                ) : (
+                  <span className={`status status-${c.status}`}>
+                    {STATUS_LABEL[c.status]}
+                  </span>
+                )}
                 {c.isOneOff ? <span className="chore-tag">one-off</span> : null}
               </div>
             </li>

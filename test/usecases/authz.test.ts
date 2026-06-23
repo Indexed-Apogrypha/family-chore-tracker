@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { makeApp } from "@/app-session/app";
 import { memberContext } from "@/app-session/context";
-import { familyId, memberId } from "@/domain/shared/ids";
+import type { ChoreInstance } from "@/domain/chore/types";
+import { familyId, instanceId, memberId } from "@/domain/shared/ids";
 import type { Result } from "@/domain/shared/result";
-import { requireParent } from "@/usecases/authz";
+import { requireOwnerOrParent, requireParent } from "@/usecases/authz";
 
 import { inMemoryPorts } from "./harness";
 
@@ -39,6 +40,46 @@ describe("requireParent guard (§8.3)", () => {
     expect(result.ok).toBe(false);
     if (!result.ok && result.error.code === "forbidden") {
       expect(result.error.need).toBe("parent");
+    }
+  });
+});
+
+describe("requireOwnerOrParent guard (§7.2, §8.3)", () => {
+  const instanceOwnedBy = (owner: string): ChoreInstance => ({
+    id: instanceId("i1"),
+    familyId: familyId("f1"),
+    templateId: null,
+    title: "Sweep",
+    points: 5,
+    assignedMemberId: memberId(owner),
+    dueDate: "2026-06-21",
+    status: "todo",
+  });
+
+  it("admits a parent acting on any instance", () => {
+    const result = requireOwnerOrParent(
+      { familyId: familyId("f1"), actor: { kind: "parent", memberId: memberId("p1") } },
+      instanceOwnedBy("kidA"),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("admits the kid who owns the instance", () => {
+    const result = requireOwnerOrParent(
+      { familyId: familyId("f1"), actor: { kind: "kid", memberId: memberId("kidA") } },
+      instanceOwnedBy("kidA"),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a kid who does not own the instance with forbidden(family_member)", () => {
+    const result = requireOwnerOrParent(
+      { familyId: familyId("f1"), actor: { kind: "kid", memberId: memberId("kidB") } },
+      instanceOwnedBy("kidA"),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "forbidden") {
+      expect(result.error.need).toBe("family_member");
     }
   });
 });

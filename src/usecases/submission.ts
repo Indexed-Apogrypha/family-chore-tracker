@@ -1,0 +1,189 @@
+import type { ChoreInstance } from "@/domain/chore/types";
+import { submissionId } from "@/domain/shared/ids";
+import type { InstanceId, SubmissionId } from "@/domain/shared/ids";
+import { err, ok } from "@/domain/shared/result";
+import type { Result } from "@/domain/shared/result";
+import type { Submission } from "@/domain/submission/types";
+import type { Ports } from "@/ports";
+import type { RequestContext } from "@/ports/context";
+import type { Verdict } from "@/ports/judge";
+
+import { requireOwnerOrParent } from "./authz";
+
+export interface SubmitPhotoInput {
+  instanceId: InstanceId;
+  /** Raw photo bytes — the HTTP layer reads these from the upload. */
+  bytes: Uint8Array;
+  /** MIME type the storage adapter uses to pick the file extension. */
+  contentType: string;
+}
+
+export interface RetrySubmissionInput {
+  submissionId: SubmissionId;
+}
+
+/**
+ * A kid submits a chore photo (design §7.2 — **ordering is part of the contract**):
+ *
+ * 1. `PhotoStorage.put(bytes)` → `PhotoRef`
+ * 2. create `Submission(evaluating)`; instance → `evaluating` (persist first)
+ * 3. `JudgePort.evaluate` → `Verdict`
+ * 4. attach verdict; submission + instance → `pending_review`
+ *
+ * Owner-or-parent: the acting kid must own the instance, or be a parent (§8.3).
+ * If the judge faults the submission **stays `evaluating`** with the photo kept
+ * and `judge_unavailable` surfaced — the only exit is {@link retrySubmission}.
+ */
+export async function submitPhoto(
+  ports: Ports,
+  ctx: RequestContext,
+  input: SubmitPhotoInput,
+): Promise<Result<Submission>> {
+  const instance = await ports.chores.getInstance(
+    ctx.familyId,
+    input.instanceId,
+  );
+  if (!instance) {
+    return err({ code: "not_found", entity: "instance", id: input.instanceId });
+  }
+
+  const gate = requireOwnerOrParent(ctx, instance);
+  if (!gate.ok) return gate;
+
+  if (input.contentType.trim().length === 0) {
+    return err({
+      code: "validation",
+      field: "contentType",
+      message: "contentType is required.",
+    });
+  }
+
+  // Mint the id up front: the photo path is keyed on it (§9) and the spec orders
+  // `put` before `create` (§7.2), so both calls share this single source of truth.
+  const id = submissionId(crypto.randomUUID());
+  const ref = await ports.photos.put(input.bytes, {
+    familyId: ctx.familyId,
+    instanceId: input.instanceId,
+    submissionId: id,
+    contentType: input.contentType,
+  });
+
+  // Persist first — the photo is durable and the state recorded before the
+  // fallible judge runs.
+  await ports.submissions.create({
+    id,
+    familyId: ctx.familyId,
+    instanceId: input.instanceId,
+    submittedBy: ctx.actor.memberId,
+    photoPath: ref.path,
+  });
+  await ports.chores.setInstanceStatus(
+    ctx.familyId,
+    input.instanceId,
+    "evaluating",
+  );
+
+  const verdict = await runJudge(ports, ref.path, instance, id);
+  if (!verdict.ok) return verdict; // stays evaluating; photo kept; retry via `id`
+
+  return advanceToPendingReview(ports, ctx, id, input.instanceId, verdict.value);
+}
+
+/**
+ * Re-run the judge on a submission stuck in `evaluating` (the only exit from that
+ * state, §7.2). The photo is reused — never re-stored. Owner-or-parent. A retry
+ * on any other status is an `invalid_transition`.
+ */
+export async function retrySubmission(
+  ports: Ports,
+  ctx: RequestContext,
+  input: RetrySubmissionInput,
+): Promise<Result<Submission>> {
+  const submission = await ports.submissions.get(
+    ctx.familyId,
+    input.submissionId,
+  );
+  if (!submission) {
+    return err({
+      code: "not_found",
+      entity: "submission",
+      id: input.submissionId,
+    });
+  }
+
+  const instance = await ports.chores.getInstance(
+    ctx.familyId,
+    submission.instanceId,
+  );
+  if (!instance) {
+    return err({
+      code: "not_found",
+      entity: "instance",
+      id: submission.instanceId,
+    });
+  }
+
+  const gate = requireOwnerOrParent(ctx, instance);
+  if (!gate.ok) return gate;
+
+  if (submission.status !== "evaluating") {
+    return err({
+      code: "invalid_transition",
+      from: submission.status,
+      to: "pending_review",
+    });
+  }
+
+  const verdict = await runJudge(ports, submission.photoPath, instance, submission.id);
+  if (!verdict.ok) return verdict; // still evaluating; try again later
+
+  return advanceToPendingReview(
+    ports,
+    ctx,
+    submission.id,
+    submission.instanceId,
+    verdict.value,
+  );
+}
+
+/**
+ * Step 3 of the contract: ask the advisory judge for a verdict. A thrown infra
+ * fault becomes the expected `judge_unavailable` value (§8.2), carrying the
+ * `submissionId` so the caller can retry that exact submission — the photo is
+ * never lost and the submission stays `evaluating`.
+ */
+async function runJudge(
+  ports: Ports,
+  photoPath: string,
+  instance: ChoreInstance,
+  submissionId: SubmissionId,
+): Promise<Result<Verdict>> {
+  try {
+    const verdict = await ports.judge.evaluate(
+      { path: photoPath },
+      { title: instance.title },
+    );
+    return ok(verdict);
+  } catch {
+    return err({ code: "judge_unavailable", submissionId });
+  }
+}
+
+/** Step 4: attach the verdict and move submission + instance to `pending_review`. */
+async function advanceToPendingReview(
+  ports: Ports,
+  ctx: RequestContext,
+  id: SubmissionId,
+  instanceId: InstanceId,
+  verdict: Verdict,
+): Promise<Result<Submission>> {
+  await ports.submissions.recordVerdict(ctx.familyId, id, verdict);
+  await ports.submissions.setStatus(ctx.familyId, id, "pending_review");
+  await ports.chores.setInstanceStatus(ctx.familyId, instanceId, "pending_review");
+
+  const submission = await ports.submissions.get(ctx.familyId, id);
+  if (!submission) {
+    return err({ code: "not_found", entity: "submission", id });
+  }
+  return ok(submission);
+}

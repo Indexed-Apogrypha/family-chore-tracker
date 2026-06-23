@@ -1,3 +1,5 @@
+import type { SubmissionId } from "./ids";
+
 /**
  * The closed set of expected failures (design §8.2).
  *
@@ -11,5 +13,7 @@ export type AppError =
   | { code: "forbidden"; need: "parent" | "kid" | "family_member" }
   | { code: "invalid_transition"; from: string; to: string }
   | { code: "bad_pin" }
-  | { code: "judge_unavailable" }
+  // The photo is stored and the submission left `evaluating`; `submissionId`
+  // (when present) is the handle the caller retries against (§7.2).
+  | { code: "judge_unavailable"; submissionId?: SubmissionId }
   | { code: "validation"; field: string; message: string };

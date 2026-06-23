@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { familyId, instanceId, memberId } from "@/domain/shared/ids";
+import {
+  familyId,
+  instanceId,
+  memberId,
+  submissionId,
+} from "@/domain/shared/ids";
 import type { Verdict } from "@/ports/judge";
 import type { SubmissionRepository } from "@/ports/repositories";
 
-const newSubmissionInput = () => ({
+// The caller mints the submission id (the photo path is keyed on it, §9), so
+// `create` takes it explicitly rather than generating one. Distinct ids model
+// the 1:N submissions-per-instance life.
+const newSubmissionInput = (id = "s1") => ({
+  id: submissionId(id),
   familyId: familyId("f1"),
   instanceId: instanceId("i1"),
   submittedBy: memberId("m1"),
-  photoPath: "f1/i1/s.jpg",
+  photoPath: `f1/i1/${id}.jpg`,
 });
 
 /**
@@ -23,6 +32,7 @@ export function runSubmissionRepositoryContract(
     it("creates a submission in the evaluating state and reads it back", async () => {
       const repo = makeRepo();
       const sub = await repo.create(newSubmissionInput());
+      expect(sub.id).toBe(submissionId("s1")); // honors the caller's id
       expect(sub.status).toBe("evaluating");
       expect(sub.instanceId).toBe(instanceId("i1"));
       expect(await repo.get(familyId("f1"), sub.id)).toEqual(sub);
@@ -46,8 +56,8 @@ export function runSubmissionRepositoryContract(
 
     it("supports many submissions per instance and lists by status (review queue)", async () => {
       const repo = makeRepo();
-      const a = await repo.create(newSubmissionInput());
-      const b = await repo.create(newSubmissionInput());
+      const a = await repo.create(newSubmissionInput("a"));
+      const b = await repo.create(newSubmissionInput("b"));
       await repo.setStatus(familyId("f1"), a.id, "pending_review");
       await repo.setStatus(familyId("f1"), b.id, "rejected");
       const pending = await repo.listByStatus(familyId("f1"), "pending_review");

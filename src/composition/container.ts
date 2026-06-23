@@ -8,6 +8,7 @@ import {
 } from "@/adapters/persistence/in-memory";
 import { supabaseMemberRepository } from "@/adapters/persistence/supabase/members";
 import { inMemoryPhotoStorage } from "@/adapters/storage/in-memory";
+import { supabasePhotoStorage } from "@/adapters/storage/supabase";
 import type { JudgePort } from "@/ports/judge";
 import type { Ports } from "@/ports";
 
@@ -48,9 +49,9 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
   const judge = selectJudge(config.judge);
 
   if (config.persistence.kind === "supabase") {
-    // M1: members persist to Supabase via the server-only service-role client.
-    // The rest stay in-memory until their milestone (photos → M3; chores /
-    // submissions / points → M6). The contract suite makes those swaps low-risk.
+    // Members persist to Supabase (M1) and photos to Supabase Storage (M3) via
+    // the server-only service-role client. Chores / submissions / points stay
+    // in-memory until M6. The contract suites make those swaps low-risk.
     const client = createServiceRoleClient(
       config.persistence.url,
       config.persistence.serviceRoleKey,
@@ -58,7 +59,10 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
     return {
       judge,
       clock: systemClock(),
-      photos: inMemoryPhotoStorage(),
+      photos: supabasePhotoStorage(
+        client,
+        config.persistence.bucket ?? "chore-photos",
+      ),
       chores: inMemoryChoreRepository(),
       submissions: inMemorySubmissionRepository(),
       members: supabaseMemberRepository(client),
