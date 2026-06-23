@@ -1,10 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { memberContext } from "@/app-session/context";
 import { buildPorts } from "@/composition/container";
 import { createServiceRoleClient } from "@/composition/supabase";
 import { findActingParent } from "@/usecases/auth";
+
+import { resetSupabase } from "../contract/supabase-reset";
 
 /**
  * Proves #49's acceptance — "a parent can sign up and log in against Supabase
@@ -26,14 +28,12 @@ const admin = createServiceRoleClient(url, serviceRoleKey);
 const ports = buildPorts(); // env-selected: Supabase members (+ lazy judge)
 const email = `m1-auth+${crypto.randomUUID()}@example.com`;
 const password = "Test-Password-123!";
-const NO_ID = "00000000-0000-0000-0000-000000000000";
 let userId = "";
 
-afterAll(async () => {
-  await admin.from("members").delete().neq("id", NO_ID);
-  await admin.from("families").delete().neq("id", NO_ID);
-  if (userId) await admin.auth.admin.deleteUser(userId);
-});
+// Start clean and leave clean — the shared reset wipes all tables + auth users
+// so this suite never contributes orphans (#103).
+beforeEach(() => resetSupabase(admin));
+afterAll(() => resetSupabase(admin));
 
 describe("parent auth + ctx derivation (live Supabase, §3.1)", () => {
   it("authenticates a parent, bootstraps a family, and derives a context", async () => {

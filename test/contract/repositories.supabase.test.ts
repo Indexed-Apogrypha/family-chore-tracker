@@ -8,6 +8,8 @@ import { createServiceRoleClient } from "@/composition/supabase";
 import { familyId, submissionId } from "@/domain/shared/ids";
 import type { FamilyId, MemberId } from "@/domain/shared/ids";
 
+import { resetSupabase } from "./supabase-reset";
+
 /**
  * Live integration proof for the M6 Supabase repository adapters (design §5, §10):
  * they behave like the in-memory executable spec against the real schema + FKs.
@@ -32,23 +34,12 @@ const chores = supabaseChoreRepository(client);
 const submissions = supabaseSubmissionRepository(client);
 const points = supabasePointsLedger(client);
 
-const NO_ID = "00000000-0000-0000-0000-000000000000";
-async function wipe(): Promise<void> {
-  // Children first; families/members would cascade, but be explicit + ordered.
-  await client.from("points_ledger").delete().neq("id", NO_ID);
-  await client.from("submissions").delete().neq("id", NO_ID);
-  await client.from("chore_instances").delete().neq("id", NO_ID);
-  await client.from("chore_templates").delete().neq("id", NO_ID);
-  await client.from("members").delete().neq("id", NO_ID);
-  await client.from("families").delete().neq("id", NO_ID);
-}
-
 let family: FamilyId;
 let parent: MemberId;
 let kid: MemberId;
 
 beforeEach(async () => {
-  await wipe();
+  await resetSupabase(client);
   const created = await members.createFamily({
     name: "Fam",
     founderDisplayName: "Parent",
@@ -58,7 +49,7 @@ beforeEach(async () => {
   kid = (await members.addKid({ familyId: family, displayName: "Rae", pin: "1234" }))
     .id;
 });
-afterAll(wipe);
+afterAll(() => resetSupabase(client));
 
 describe("Supabase repositories — live integration (M6)", () => {
   it("chores: create/list templates (description round-trip), active toggle scoping", async () => {
