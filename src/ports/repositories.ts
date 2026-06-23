@@ -104,7 +104,13 @@ export interface ChoreRepository {
 }
 
 export interface SubmissionRepository {
+  /**
+   * Insert a submission in the `evaluating` state. The caller mints `id` so the
+   * photo can be stored at its final `family/instance/submission.<ext>` path
+   * before the row exists (§7.2, §9) — id and `photoPath` share one source.
+   */
   create(input: {
+    id: SubmissionId;
     familyId: FamilyId;
     instanceId: InstanceId;
     submittedBy: MemberId;

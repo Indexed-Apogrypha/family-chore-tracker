@@ -1,6 +1,7 @@
 import type { ChoreInstance, ChoreTemplate } from "@/domain/chore/types";
 import type { Family, Member } from "@/domain/family/types";
 import type { Result } from "@/domain/shared/result";
+import type { Submission } from "@/domain/submission/types";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 import {
@@ -23,6 +24,12 @@ import {
   verifyKidPin,
 } from "@/usecases/members";
 import { type SwitchProfileInput, switchProfile } from "@/usecases/profile";
+import {
+  type RetrySubmissionInput,
+  type SubmitPhotoInput,
+  retrySubmission,
+  submitPhoto,
+} from "@/usecases/submission";
 
 /**
  * The session edge (design §4.2). `app.as(ctx)` binds the request context once;
@@ -52,6 +59,10 @@ export interface Session {
   ): Promise<Result<ChoreTemplate>>;
   /** A member's chore board for the day, materializing due instances — any family member (§7.3). */
   getTodayBoard(input: GetTodayBoardInput): Promise<Result<ChoreInstance[]>>;
+  /** Submit a chore photo — the acting kid must own the instance, or a parent (§7.2, §8.3). */
+  submitPhoto(input: SubmitPhotoInput): Promise<Result<Submission>>;
+  /** Re-run the judge on a submission stuck in `evaluating` — owner-or-parent (§7.2). */
+  retrySubmission(input: RetrySubmissionInput): Promise<Result<Submission>>;
 }
 
 export interface App {
@@ -84,6 +95,10 @@ export function makeApp(ports: Ports): App {
           setTemplateActive(ports, ctx, input),
         getTodayBoard: (input: GetTodayBoardInput) =>
           getTodayBoard(ports, ctx, input),
+        submitPhoto: (input: SubmitPhotoInput) =>
+          submitPhoto(ports, ctx, input),
+        retrySubmission: (input: RetrySubmissionInput) =>
+          retrySubmission(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {

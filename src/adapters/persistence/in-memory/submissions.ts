@@ -1,5 +1,4 @@
 import type { SubmissionStatus } from "@/domain/shared/enums";
-import { submissionId } from "@/domain/shared/ids";
 import type { FamilyId, SubmissionId } from "@/domain/shared/ids";
 import type { Submission } from "@/domain/submission/types";
 import type { Verdict } from "@/ports/judge";
@@ -19,9 +18,9 @@ export function inMemorySubmissionRepository(): SubmissionRepository {
   };
 
   return {
-    async create({ familyId, instanceId, submittedBy, photoPath }) {
+    async create({ id, familyId, instanceId, submittedBy, photoPath }) {
       const submission: Submission = {
-        id: submissionId(crypto.randomUUID()),
+        id,
         familyId,
         instanceId,
         submittedBy,
