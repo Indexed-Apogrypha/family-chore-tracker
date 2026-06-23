@@ -1,4 +1,5 @@
-import { ok } from "@/domain/shared/result";
+import type { SubmissionId } from "@/domain/shared/ids";
+import { err, ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Submission } from "@/domain/submission/types";
 import type { Ports } from "@/ports";
@@ -37,4 +38,93 @@ export async function getReviewQueue(
     })),
   );
   return ok(items);
+}
+
+export interface DecideInput {
+  submissionId: SubmissionId;
+  decision: "approve" | "reject";
+}
+
+/**
+ * A parent's **authoritative** decision on a submission (design §7.1, §8.1).
+ * Valid only while the submission is `pending_review` (else `invalid_transition`).
+ * The parent may override the advisory AI verdict either way — `decide` never
+ * consults it.
+ *
+ * - **approve** → submission + instance `approved`, and the kid is credited the
+ *   instance's points **exactly once** (the ledger is idempotent on
+ *   `submissionId`, §6).
+ * - **reject** → submission terminal `rejected`; the instance recycles to `todo`
+ *   so a fresh photo starts a new submission (`chore_instances` has no `rejected`).
+ *
+ * Parent-only; every id is family-scoped (cross-family → `not_found`).
+ */
+export async function decide(
+  ports: Ports,
+  ctx: RequestContext,
+  input: DecideInput,
+): Promise<Result<Submission>> {
+  const gate = requireParent(ctx);
+  if (!gate.ok) return gate;
+
+  const submission = await ports.submissions.get(ctx.familyId, input.submissionId);
+  if (!submission) {
+    return err({
+      code: "not_found",
+      entity: "submission",
+      id: input.submissionId,
+    });
+  }
+  if (submission.status !== "pending_review") {
+    return err({
+      code: "invalid_transition",
+      from: submission.status,
+      to: input.decision === "approve" ? "approved" : "rejected",
+    });
+  }
+
+  const instance = await ports.chores.getInstance(
+    ctx.familyId,
+    submission.instanceId,
+  );
+  if (!instance) {
+    return err({
+      code: "not_found",
+      entity: "instance",
+      id: submission.instanceId,
+    });
+  }
+
+  const decidedAt = ports.clock.now();
+
+  if (input.decision === "approve") {
+    await ports.submissions.recordDecision(ctx.familyId, submission.id, {
+      status: "approved",
+      decidedBy: ctx.actor.memberId,
+      decidedAt,
+    });
+    await ports.chores.setInstanceStatus(ctx.familyId, instance.id, "approved");
+    // Idempotent on submissionId → "+points exactly once" even if replayed (§6).
+    await ports.points.append({
+      familyId: ctx.familyId,
+      memberId: instance.assignedMemberId,
+      submissionId: submission.id,
+      delta: instance.points,
+      reason: "chore_approved",
+      createdAt: decidedAt,
+    });
+  } else {
+    await ports.submissions.recordDecision(ctx.familyId, submission.id, {
+      status: "rejected",
+      decidedBy: ctx.actor.memberId,
+      decidedAt,
+    });
+    await ports.chores.setInstanceStatus(ctx.familyId, instance.id, "todo");
+  }
+
+  const updated = await ports.submissions.get(ctx.familyId, submission.id);
+  if (!updated) {
+    return err({ code: "not_found", entity: "submission", id: submission.id });
+  }
+  return ok(updated);
 }

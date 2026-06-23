@@ -6,6 +6,7 @@ import {
   memberId,
   submissionId,
 } from "@/domain/shared/ids";
+import type { MemberId } from "@/domain/shared/ids";
 import type { Verdict } from "@/ports/judge";
 import type { SubmissionRepository } from "@/ports/repositories";
 
@@ -62,6 +63,22 @@ export function runSubmissionRepositoryContract(
       await repo.setStatus(familyId("f1"), b.id, "rejected");
       const pending = await repo.listByStatus(familyId("f1"), "pending_review");
       expect(pending.map((s) => s.id)).toEqual([a.id]);
+    });
+
+    it("records a parent's authoritative decision (status + decidedBy + decidedAt)", async () => {
+      const repo = makeRepo();
+      const sub = await repo.create(newSubmissionInput());
+      const decidedBy: MemberId = memberId("parent-1");
+      const decidedAt = "2026-06-21T10:00:00.000Z";
+      await repo.recordDecision(familyId("f1"), sub.id, {
+        status: "approved",
+        decidedBy,
+        decidedAt,
+      });
+      const got = await repo.get(familyId("f1"), sub.id);
+      expect(got?.status).toBe("approved");
+      expect(got?.decidedBy).toBe(decidedBy);
+      expect(got?.decidedAt).toBe(decidedAt);
     });
 
     it("scopes by family: another family's submission resolves to null (§9)", async () => {

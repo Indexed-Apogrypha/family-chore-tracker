@@ -24,7 +24,12 @@ import {
   verifyKidPin,
 } from "@/usecases/members";
 import { type SwitchProfileInput, switchProfile } from "@/usecases/profile";
-import { type ReviewItem, getReviewQueue } from "@/usecases/review";
+import {
+  type DecideInput,
+  type ReviewItem,
+  decide,
+  getReviewQueue,
+} from "@/usecases/review";
 import {
   type RetrySubmissionInput,
   type SubmitPhotoInput,
@@ -66,6 +71,8 @@ export interface Session {
   retrySubmission(input: RetrySubmissionInput): Promise<Result<Submission>>;
   /** The parent review queue: pending submissions + verdict + signed photo URL — parent-only (§8.1). */
   getReviewQueue(): Promise<Result<ReviewItem[]>>;
+  /** Approve/reject a pending submission — parent-only, authoritative; approve credits points once (§7.1). */
+  decide(input: DecideInput): Promise<Result<Submission>>;
 }
 
 export interface App {
@@ -103,6 +110,7 @@ export function makeApp(ports: Ports): App {
         retrySubmission: (input: RetrySubmissionInput) =>
           retrySubmission(ports, ctx, input),
         getReviewQueue: () => getReviewQueue(ports, ctx),
+        decide: (input: DecideInput) => decide(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {

@@ -49,6 +49,18 @@ export function inMemorySubmissionRepository(): SubmissionRepository {
       }
     },
 
+    async recordDecision(family, id, decision) {
+      const submission = scoped(family, id);
+      if (submission) {
+        submissions.set(id, {
+          ...submission,
+          status: decision.status,
+          decidedBy: decision.decidedBy,
+          decidedAt: decision.decidedAt,
+        });
+      }
+    },
+
     async listByStatus(family: FamilyId, status: SubmissionStatus) {
       return [...submissions.values()].filter(
         (s) => s.familyId === family && s.status === status,
