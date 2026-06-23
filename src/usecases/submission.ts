@@ -83,8 +83,8 @@ export async function submitPhoto(
     "evaluating",
   );
 
-  const verdict = await runJudge(ports, ref.path, instance);
-  if (!verdict.ok) return verdict; // stays evaluating; photo kept; retryable
+  const verdict = await runJudge(ports, ref.path, instance, id);
+  if (!verdict.ok) return verdict; // stays evaluating; photo kept; retry via `id`
 
   return advanceToPendingReview(ports, ctx, id, input.instanceId, verdict.value);
 }
@@ -134,7 +134,7 @@ export async function retrySubmission(
     });
   }
 
-  const verdict = await runJudge(ports, submission.photoPath, instance);
+  const verdict = await runJudge(ports, submission.photoPath, instance, submission.id);
   if (!verdict.ok) return verdict; // still evaluating; try again later
 
   return advanceToPendingReview(
@@ -148,13 +148,15 @@ export async function retrySubmission(
 
 /**
  * Step 3 of the contract: ask the advisory judge for a verdict. A thrown infra
- * fault becomes the expected `judge_unavailable` value (§8.2) — the caller leaves
- * the submission `evaluating` so the photo is never lost.
+ * fault becomes the expected `judge_unavailable` value (§8.2), carrying the
+ * `submissionId` so the caller can retry that exact submission — the photo is
+ * never lost and the submission stays `evaluating`.
  */
 async function runJudge(
   ports: Ports,
   photoPath: string,
   instance: ChoreInstance,
+  submissionId: SubmissionId,
 ): Promise<Result<Verdict>> {
   try {
     const verdict = await ports.judge.evaluate(
@@ -163,7 +165,7 @@ async function runJudge(
     );
     return ok(verdict);
   } catch {
-    return err({ code: "judge_unavailable" });
+    return err({ code: "judge_unavailable", submissionId });
   }
 }
 

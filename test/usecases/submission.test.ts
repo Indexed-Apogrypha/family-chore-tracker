@@ -178,9 +178,6 @@ describe("submitPhoto (owner-or-parent, §7.2)", () => {
       contentType: "image/jpeg",
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("judge_unavailable");
-
     // The submission survives in evaluating with the photo persisted and no verdict.
     const evaluating = await ports.submissions.listByStatus(
       base.instance.familyId,
@@ -189,6 +186,13 @@ describe("submitPhoto (owner-or-parent, §7.2)", () => {
     expect(evaluating).toHaveLength(1);
     expect(evaluating[0].photoPath).not.toBe("");
     expect(evaluating[0].aiVerdict).toBeUndefined();
+    // The error names the submission to retry against (the photo's handle, §7.2).
+    expect(result.ok).toBe(false);
+    if (!result.ok && result.error.code === "judge_unavailable") {
+      expect(result.error.submissionId).toBe(evaluating[0].id);
+    } else {
+      throw new Error("expected judge_unavailable");
+    }
     // Instance moved to evaluating (persist-first), not rolled back.
     const inst = await ports.chores.getInstance(
       base.instance.familyId,
