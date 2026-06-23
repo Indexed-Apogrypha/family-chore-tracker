@@ -12,6 +12,10 @@ export interface ReviewItem {
   submission: Submission;
   /** Short-lived signed URL for viewing the photo — never a public link (§9). */
   photoUrl: string;
+  /** The chore's title at submission time (snapshot on the instance). */
+  choreTitle: string;
+  /** Points the kid earns if this is approved. */
+  points: number;
 }
 
 /**
@@ -32,10 +36,18 @@ export async function getReviewQueue(
     "pending_review",
   );
   const items = await Promise.all(
-    submissions.map(async (submission) => ({
-      submission,
-      photoUrl: await ports.photos.signedUrl({ path: submission.photoPath }),
-    })),
+    submissions.map(async (submission) => {
+      const [photoUrl, instance] = await Promise.all([
+        ports.photos.signedUrl({ path: submission.photoPath }),
+        ports.chores.getInstance(ctx.familyId, submission.instanceId),
+      ]);
+      return {
+        submission,
+        photoUrl,
+        choreTitle: instance?.title ?? "Chore",
+        points: instance?.points ?? 0,
+      };
+    }),
   );
   return ok(items);
 }

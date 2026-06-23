@@ -6,6 +6,7 @@ import { deriveContext } from "@/composition/request";
 import type { InstanceStatus } from "@/domain/shared/enums";
 import { getTodayBoard } from "@/usecases/chores";
 import { listMembers } from "@/usecases/members";
+import { pointsTotal } from "@/usecases/points";
 
 import { ChoreCapture } from "./chore-capture";
 
@@ -47,6 +48,11 @@ export default async function BoardPage() {
     (m) => m.id === ctx.actor.memberId,
   );
 
+  const totalResult = await pointsTotal(ports, ctx, {
+    memberId: ctx.actor.memberId,
+  });
+  const total = totalResult.ok ? totalResult.value : 0;
+
   return (
     <main>
       <p className="board-nav">
@@ -55,7 +61,7 @@ export default async function BoardPage() {
       <h1>Today&rsquo;s chores</h1>
       <p className="board-sub">
         {me ? `${me.displayName} · ` : ""}
-        {today}
+        <span className="points-total">{total} pts</span> · {today}
       </p>
 
       {chores.length === 0 ? (

@@ -61,6 +61,8 @@ describe("getReviewQueue (parent-only, §8.1)", () => {
     expect(queue[0].submission.status).toBe("pending_review");
     expect(queue[0].submission.aiVerdict).toBeDefined();
     expect(queue[0].photoUrl.length).toBeGreaterThan(0);
+    expect(queue[0].choreTitle).toBe("Sweep the floor");
+    expect(queue[0].points).toBe(5);
   });
 
   it("is parent-only — a kid gets forbidden", async () => {
