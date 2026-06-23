@@ -4,8 +4,8 @@ import { memberContext } from "@/app-session/context";
 import { submissionId } from "@/domain/shared/ids";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
-import type { JudgePort } from "@/ports/judge";
-import { createOneOff } from "@/usecases/chores";
+import type { ChoreContext, JudgePort } from "@/ports/judge";
+import { createOneOff, createTemplate, getTodayBoard } from "@/usecases/chores";
 import { createFamily } from "@/usecases/family";
 import { addKid } from "@/usecases/members";
 import { retrySubmission, submitPhoto } from "@/usecases/submission";
@@ -99,6 +99,49 @@ describe("submitPhoto (owner-or-parent, §7.2)", () => {
       instance.id,
     );
     expect(advanced?.status).toBe("pending_review");
+  });
+
+  it("passes the chore's snapshotted description through to the judge (#115)", async () => {
+    const captured: ChoreContext[] = [];
+    const recordingJudge: JudgePort = {
+      async evaluate(_photo, chore) {
+        captured.push(chore);
+        return { pass: true, confidence: 0.9, reasoning: "ok", model: "stub" };
+      },
+    };
+    const ports = { ...inMemoryPorts(), judge: recordingJudge };
+    const { founder } = unwrap(
+      await createFamily(ports, { name: "Fam", founderDisplayName: "Parent" }),
+    );
+    const parentCtx = memberContext(founder);
+    const kid = unwrap(
+      await addKid(ports, parentCtx, { displayName: "Rae", pin: "1234" }),
+    );
+    // A template carrying a description → its generated instance snapshots it.
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        description: "Tuck in the sheets and fluff the pillow",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+    const board = unwrap(
+      await getTodayBoard(ports, parentCtx, { memberId: kid.id }),
+    );
+
+    unwrap(
+      await submitPhoto(ports, memberContext(kid), {
+        instanceId: board[0].id,
+        bytes: PHOTO,
+        contentType: "image/jpeg",
+      }),
+    );
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].title).toBe("Make the bed");
+    expect(captured[0].description).toBe("Tuck in the sheets and fluff the pillow");
   });
 
   it("lets a parent submit on a kid's behalf", async () => {

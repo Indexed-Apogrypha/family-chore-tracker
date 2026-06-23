@@ -161,7 +161,13 @@ async function runJudge(
   try {
     const verdict = await ports.judge.evaluate(
       { path: photoPath },
-      { title: instance.title },
+      {
+        title: instance.title,
+        // pass the snapshotted description through when present (#115)
+        ...(instance.description !== undefined
+          ? { description: instance.description }
+          : {}),
+      },
     );
     return ok(verdict);
   } catch {

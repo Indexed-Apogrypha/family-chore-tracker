@@ -26,6 +26,7 @@ export type Database = {
         Row: {
           assigned_member_id: string;
           created_at: string;
+          description: string | null;
           due_date: string;
           family_id: string;
           id: string;
@@ -37,6 +38,7 @@ export type Database = {
         Insert: {
           assigned_member_id: string;
           created_at?: string;
+          description?: string | null;
           due_date: string;
           family_id: string;
           id?: string;
@@ -48,6 +50,7 @@ export type Database = {
         Update: {
           assigned_member_id?: string;
           created_at?: string;
+          description?: string | null;
           due_date?: string;
           family_id?: string;
           id?: string;

@@ -154,7 +154,7 @@ All tables carry `family_id` (the tenant key for RLS).
 | `families` | `id`, `name`, `created_by` |
 | `members` | `id`, `family_id`, `kind: parent\|kid`, `display_name`, `auth_user_id?` (parents), `pin_hash?` (kids) |
 | `chore_templates` | `id`, `family_id`, `title`, `description`, `points`, `recurrence`, `assigned_member_id`, `active` |
-| `chore_instances` | `id`, `family_id`, `template_id?` (null = one-off), `title`/`points` (snapshot), `assigned_member_id`, `due_date`, `status` |
+| `chore_instances` | `id`, `family_id`, `template_id?` (null = one-off), `title`/`description?`/`points` (snapshot — `description` fed to the judge), `assigned_member_id`, `due_date`, `status` |
 | `submissions` | `id`, `family_id`, `instance_id`, `submitted_by`, `photo_path`, `status`, `ai_verdict jsonb {pass,confidence,reasoning,model}`, `decided_by?`, `decided_at?` |
 | `points_ledger` | `id`, `family_id`, `member_id`, `submission_id`, `delta`, `reason`, `created_at` (append-only) |
 

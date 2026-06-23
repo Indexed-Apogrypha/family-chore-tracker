@@ -167,6 +167,10 @@ export async function getTodayBoard(
         familyId: ctx.familyId,
         templateId: template.id,
         title: template.title, // snapshot at materialization
+        // snapshot the description too (when set) so the judge can use it (#115)
+        ...(template.description !== undefined
+          ? { description: template.description }
+          : {}),
         points: template.points, // snapshot at materialization
         assignedMemberId: input.memberId,
         dueDate: date,

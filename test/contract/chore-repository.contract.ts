@@ -53,6 +53,19 @@ export function runChoreRepositoryContract(
       expect(await repo.listInstances(familyId("f1"), {})).toHaveLength(1);
     });
 
+    it("round-trips an optional description snapshot on a generated instance (#115)", async () => {
+      const repo = makeRepo();
+      const withDesc = await repo.upsertGeneratedInstance(
+        genInput({ description: "after dinner" }),
+      );
+      expect(withDesc.description).toBe("after dinner");
+      // A generated instance with no description carries none (not empty string).
+      const plain = await repo.upsertGeneratedInstance(
+        genInput({ templateId: templateId("t2") }),
+      );
+      expect(plain.description).toBeUndefined();
+    });
+
     it("treats a different member, dueDate, or template as a distinct instance", async () => {
       const repo = makeRepo();
       const a = await repo.upsertGeneratedInstance(genInput());
