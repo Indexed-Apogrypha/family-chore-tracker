@@ -43,15 +43,30 @@ describe("buildPorts", () => {
     expect(ports.points).toBeDefined();
   });
 
-  it("defers the real judge to M4: builds, but evaluate() rejects", async () => {
-    // buildPorts must boot with provider keys present (the auth routes need the
-    // member repo, not the judge); the M4 error surfaces only on use.
+  it("wires the real Anthropic judge over Supabase storage (M4, lazy — no network at build)", () => {
+    // SDK clients construct lazily, so fake creds wire without a network call;
+    // a real call (and any infra fault → judge_unavailable) happens only on evaluate.
     const ports = buildPorts({
-      judge: { provider: "anthropic", apiKey: "a" },
-      persistence: { kind: "in-memory" },
+      judge: { provider: "anthropic", apiKey: "a", model: "claude-sonnet-4-6" },
+      persistence: { kind: "supabase", url: "https://x.supabase.co", serviceRoleKey: "k" },
     });
-    await expect(
-      ports.judge.evaluate({ path: "p" }, { title: "Dishes" }),
-    ).rejects.toThrow(/M4/);
+    expect(typeof ports.judge.evaluate).toBe("function");
+  });
+
+  it("wires the real Gemini judge over Supabase storage (M4, lazy — no network at build)", () => {
+    const ports = buildPorts({
+      judge: { provider: "gemini", apiKey: "g" },
+      persistence: { kind: "supabase", url: "https://x.supabase.co", serviceRoleKey: "k" },
+    });
+    expect(typeof ports.judge.evaluate).toBe("function");
+  });
+
+  it("rejects a real judge over in-memory storage (memory:// URLs aren't fetchable)", () => {
+    expect(() =>
+      buildPorts({
+        judge: { provider: "anthropic", apiKey: "a" },
+        persistence: { kind: "in-memory" },
+      }),
+    ).toThrow(/requires Supabase storage/);
   });
 });

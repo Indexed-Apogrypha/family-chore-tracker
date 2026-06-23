@@ -113,6 +113,33 @@ describe("submitPhoto (owner-or-parent, §7.2)", () => {
     expect(unwrap(result).status).toBe("pending_review");
   });
 
+  it("records the verdict but never advances past pending_review — advisory only (§7.1)", async () => {
+    // Even a confident pass verdict only reaches pending_review; only a parent's
+    // decision (M5) advances to approved. The verdict is persisted verbatim.
+    for (const pass of [true, false]) {
+      const base = await seed();
+      const judge: JudgePort = {
+        async evaluate() {
+          return { pass, confidence: 0.95, reasoning: "advisory", model: "stub" };
+        },
+      };
+      const ports = { ...base.ports, judge };
+
+      const submission = unwrap(
+        await submitPhoto(ports, base.kidCtx, {
+          instanceId: base.instance.id,
+          bytes: PHOTO,
+          contentType: "image/jpeg",
+        }),
+      );
+
+      expect(submission.status).toBe("pending_review"); // not "approved", even on pass
+      expect(submission.aiVerdict?.pass).toBe(pass); // verdict recorded verbatim
+      const inst = await ports.chores.getInstance(base.instance.familyId, base.instance.id);
+      expect(inst?.status).toBe("pending_review");
+    }
+  });
+
   it("refuses a kid who does not own the instance and writes nothing", async () => {
     const { ports, parentCtx, instance } = await seed();
     const otherKid = unwrap(
