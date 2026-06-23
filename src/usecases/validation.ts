@@ -96,22 +96,29 @@ export function requireDate(field: string, value: string): Result<IsoDate> {
 }
 
 /**
- * Validate a recurrence shape (design §6). `none`/`daily` are always valid; a
- * `weekly` schedule must list at least one weekday, each an integer in `0..6`
- * (0 = Sunday … 6 = Saturday). A weekly chore with no days would never recur.
+ * Validate a recurrence shape (design §6). Reaches the use-case as **untrusted**
+ * JSON from the route (cast to `Recurrence`), so it validates the whole shape,
+ * not just well-formed values: `none`/`daily` are accepted as-is; `weekly` must
+ * carry a non-empty `days` array of integers in `0..6` (0 = Sunday … 6 =
+ * Saturday); any other `kind` is rejected. Malformed input becomes a
+ * `validation` value, never a thrown exception or a silently-stored bad row.
  */
 export function requireRecurrence(value: Recurrence): Result<Recurrence> {
-  if (value.kind === "weekly") {
-    const valid =
-      value.days.length > 0 &&
-      value.days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
-    if (!valid) {
-      return err({
-        code: "validation",
-        field: "recurrence",
-        message: "weekly recurrence needs at least one weekday (0–6).",
-      });
-    }
+  const invalid = (message: string): Result<Recurrence> =>
+    err({ code: "validation", field: "recurrence", message });
+
+  if (value.kind === "none" || value.kind === "daily") {
+    return ok(value);
   }
-  return ok(value);
+  if (value.kind === "weekly") {
+    const days: unknown = value.days;
+    const valid =
+      Array.isArray(days) &&
+      days.length > 0 &&
+      days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    return valid
+      ? ok(value)
+      : invalid("weekly recurrence needs at least one weekday (0–6).");
+  }
+  return invalid("unknown recurrence kind.");
 }
