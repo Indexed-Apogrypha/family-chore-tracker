@@ -164,14 +164,25 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      - name: Deploy prebuilt artifacts to production
+      # Split deploy from promotion. `vercel deploy --prebuilt --prod` does an
+      # INLINE domain promotion that can hang indefinitely on its post-deploy
+      # wait (observed ~25min, deployment READY but alias never flipped).
+      # `--skip-domain` creates the production deployment and returns fast; we
+      # then promote explicitly — quick, and bounded by promote's --timeout (3m).
+      - name: Deploy prebuilt artifacts to production (skip auto-promote)
         id: deploy
         if: steps.guard.outputs.ready == 'true'
         run: |
-          out="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          out="$(vercel deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")"
           echo "$out"
           url="$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9-]+\.vercel\.app' | tail -n1)"
           echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Promote to the production domain
+        if: steps.guard.outputs.ready == 'true'
+        run: vercel promote "${{ steps.deploy.outputs.url }}" --yes --token="$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
