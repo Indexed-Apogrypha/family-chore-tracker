@@ -1,6 +1,7 @@
 import { fixedClock } from "@/adapters/clock/fixed";
 import { fakeJudge } from "@/adapters/judge/fake";
 import {
+  createInMemoryStore,
   inMemoryChoreRepository,
   inMemoryMemberRepository,
   inMemoryPointsLedger,
@@ -17,12 +18,15 @@ const DEFAULT_NOW = "2026-06-21T09:00:00.000Z";
  * for use-case tests (design §10): full coverage, no network, no AI spend.
  */
 export function inMemoryPorts(now: string = DEFAULT_NOW): Ports {
+  // Shared store → the atomic advance flips the same instance the chore repo
+  // reads (§7.2), so use-case tests see submission + instance move together.
+  const store = createInMemoryStore();
   return {
     judge: fakeJudge(),
     clock: fixedClock(now),
     photos: inMemoryPhotoStorage(),
-    chores: inMemoryChoreRepository(),
-    submissions: inMemorySubmissionRepository(),
+    chores: inMemoryChoreRepository(store),
+    submissions: inMemorySubmissionRepository(store),
     members: inMemoryMemberRepository(),
     points: inMemoryPointsLedger(),
   };

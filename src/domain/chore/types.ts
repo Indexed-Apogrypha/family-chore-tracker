@@ -28,8 +28,10 @@ export interface ChoreInstance {
   familyId: FamilyId;
   /** Null for a one-off chore; set for a template-generated instance. */
   templateId: TemplateId | null;
-  /** Snapshot of the template's title/points at generation time. */
+  /** Snapshot of the template's title/description/points at generation time. */
   title: string;
+  /** Snapshot of the template's description, when it had one — fed to the judge. */
+  description?: string;
   points: number;
   assignedMemberId: MemberId;
   dueDate: IsoDate;

@@ -1,12 +1,16 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 /**
  * Parent signup form — creates the Supabase account and bootstraps the family
- * (§4.2). On success it sends the parent to the login screen.
+ * (§4.2). With email auto-confirm on, signup also logs the parent in, so on
+ * success it goes straight to the hub (mirroring login); only when email
+ * confirmation is required does it show the "confirm your email" message (#102).
  */
 export function SignupForm() {
+  const router = useRouter();
   const [familyName, setFamilyName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -23,10 +27,19 @@ export function SignupForm() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password, familyName, displayName }),
     });
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      session?: boolean;
+    };
     setBusy(false);
     if (!res.ok) {
       setError(data.error ? `Could not sign up: ${data.error}` : "Could not sign up.");
+      return;
+    }
+    if (data.session) {
+      // Auto-confirm signed us in already — go to the hub (mirrors login).
+      router.push("/");
+      router.refresh();
       return;
     }
     setDone(true);
@@ -35,9 +48,8 @@ export function SignupForm() {
   if (done) {
     return (
       <p className="hint" role="status">
-        Account created. <a href="/login">Log in</a> to continue.
-        <br />
-        (If email confirmation is on, confirm your address first.)
+        Account created. Check your email to confirm your address, then{" "}
+        <a href="/login">log in</a>.
       </p>
     );
   }

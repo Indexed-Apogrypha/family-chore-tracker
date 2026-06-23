@@ -18,7 +18,9 @@ export function submissionResponse(result: Result<Submission>): Response {
         ? 404
         : error.code === "invalid_transition"
           ? 409
-          : error.code === "judge_unavailable"
+          : error.code === "judge_unavailable" ||
+              error.code === "storage_unavailable" ||
+              error.code === "persistence_unavailable"
             ? 503
             : 400;
   const body =

@@ -26,6 +26,7 @@ export type Database = {
         Row: {
           assigned_member_id: string;
           created_at: string;
+          description: string | null;
           due_date: string;
           family_id: string;
           id: string;
@@ -37,6 +38,7 @@ export type Database = {
         Insert: {
           assigned_member_id: string;
           created_at?: string;
+          description?: string | null;
           due_date: string;
           family_id: string;
           id?: string;
@@ -48,6 +50,7 @@ export type Database = {
         Update: {
           assigned_member_id?: string;
           created_at?: string;
+          description?: string | null;
           due_date?: string;
           family_id?: string;
           id?: string;
@@ -326,6 +329,15 @@ export type Database = {
           family_name: string;
           founder_id: string;
         }[];
+      };
+      record_verdict_and_advance: {
+        Args: {
+          p_family_id: string;
+          p_instance_id: string;
+          p_submission_id: string;
+          p_verdict: Json;
+        };
+        Returns: undefined;
       };
     };
     Enums: {

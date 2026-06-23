@@ -199,8 +199,25 @@ describe("getTodayBoard — lazy instance generation (§7.3)", () => {
     expect(board[0].templateId).not.toBeNull();
     expect(board[0].title).toBe("Make the bed"); // snapshot
     expect(board[0].points).toBe(5); // snapshot
+    expect(board[0].description).toBeUndefined(); // template had none → none snapshotted
     expect(board[0].dueDate).toBe(SUNDAY);
     expect(board[0].status).toBe("todo");
+  });
+
+  it("snapshots the template's description onto the instance (#115)", async () => {
+    const { ports, parentCtx, kid } = await withFamilyAndKid();
+    unwrap(
+      await createTemplate(ports, parentCtx, {
+        title: "Make the bed",
+        description: "Tuck in the sheets and fluff the pillow",
+        points: 5,
+        recurrence: { kind: "daily" },
+        assignedMemberId: kid.id,
+      }),
+    );
+
+    const board = unwrap(await getTodayBoard(ports, parentCtx, { memberId: kid.id }));
+    expect(board[0].description).toBe("Tuck in the sheets and fluff the pillow");
   });
 
   it("is idempotent — calling twice for the same day makes no duplicate", async () => {

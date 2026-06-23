@@ -26,7 +26,12 @@ function toSubmission(row: SubmissionRow): Submission {
       ? { aiVerdict: row.ai_verdict as unknown as Verdict }
       : {}),
     ...(row.decided_by !== null ? { decidedBy: memberId(row.decided_by) } : {}),
-    ...(row.decided_at !== null ? { decidedAt: row.decided_at } : {}),
+    // Postgres `timestamptz` reads back as e.g. `…+00:00`; canonicalize to the
+    // app's ISO instant (`…Z`) so the value matches the in-memory adapter and
+    // the clock's `now()` (the shared contract asserts this round-trip, #117).
+    ...(row.decided_at !== null
+      ? { decidedAt: new Date(row.decided_at).toISOString() }
+      : {}),
   };
 }
 
@@ -81,6 +86,19 @@ export function supabaseSubmissionRepository(
         .update({ status })
         .eq("id", id)
         .eq("family_id", family);
+      if (error) throw error;
+    },
+
+    async recordVerdictAndAdvance(family, id, instance, verdict) {
+      // One transaction (the SECURITY DEFINER RPC) updates the submission's
+      // verdict + status AND the instance's status together, so an infra fault
+      // can't half-commit (§7.2).
+      const { error } = await client.rpc("record_verdict_and_advance", {
+        p_family_id: family,
+        p_submission_id: id,
+        p_instance_id: instance,
+        p_verdict: verdict as unknown as Json,
+      });
       if (error) throw error;
     },
 

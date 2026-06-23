@@ -18,6 +18,10 @@ function describeError(error: AppError): string {
       return "bad_pin";
     case "judge_unavailable":
       return "judge_unavailable";
+    case "storage_unavailable":
+      return "storage_unavailable";
+    case "persistence_unavailable":
+      return "persistence_unavailable";
     case "validation":
       return `validation:${error.field}:${error.message}`;
     default: {
@@ -40,6 +44,12 @@ describe("AppError", () => {
     ).toBe("invalid_transition:todo->approved");
     expect(describeError({ code: "bad_pin" })).toBe("bad_pin");
     expect(describeError({ code: "judge_unavailable" })).toBe("judge_unavailable");
+    expect(describeError({ code: "storage_unavailable" })).toBe(
+      "storage_unavailable",
+    );
+    expect(describeError({ code: "persistence_unavailable" })).toBe(
+      "persistence_unavailable",
+    );
     expect(
       describeError({ code: "validation", field: "pin", message: "too short" }),
     ).toBe("validation:pin:too short");

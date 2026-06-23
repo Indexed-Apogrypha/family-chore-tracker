@@ -9,16 +9,24 @@ import type {
 import type { IsoDate } from "@/ports/clock";
 import type { ChoreRepository } from "@/ports/repositories";
 
+import { type InMemoryStore, createInMemoryStore } from "./store";
+
 /**
  * In-memory chore templates + instances. The headline contract is the
  * idempotent lazy upsert of template-generated instances keyed on
  * `(templateId, assignedMemberId, dueDate)` — mirrors the partial unique index
  * that makes `getTodayBoard` safe to call repeatedly (design §6, §7.3).
  * One-off instances sit deliberately outside that key and are never deduped.
+ *
+ * `instances` lives in the shared {@link InMemoryStore} so the submission repo
+ * can advance an instance alongside its submission in one step (§7.2). Templates
+ * + the generated-key index are chore-only and stay local.
  */
-export function inMemoryChoreRepository(): ChoreRepository {
+export function inMemoryChoreRepository(
+  store: InMemoryStore = createInMemoryStore(),
+): ChoreRepository {
   const templates = new Map<TemplateId, ChoreTemplate>();
-  const instances = new Map<InstanceId, ChoreInstance>();
+  const instances = store.instances;
   const generatedIndex = new Map<string, InstanceId>();
 
   const generatedKey = (

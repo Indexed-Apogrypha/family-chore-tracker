@@ -2,6 +2,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { Database } from "@/composition/database.types";
 import type { Family, Member, MemberKind } from "@/domain/family/types";
 import { familyId, memberId } from "@/domain/shared/ids";
 import type { MemberRepository } from "@/ports/repositories";
@@ -27,22 +28,17 @@ function verifyPin(pin: string, stored: string): boolean {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-interface MemberRow {
-  id: string;
-  family_id: string;
-  kind: MemberKind;
-  display_name: string;
-  auth_user_id: string | null;
-  pin_hash: string | null;
-}
-
-const MEMBER_COLS = "id, family_id, kind, display_name, auth_user_id, pin_hash";
+// Derived from the generated schema (not hand-written) so a column rename/drift
+// in the `members` table fails `typecheck` rather than being masked by a cast.
+type MemberRow = Database["public"]["Tables"]["members"]["Row"];
 
 function toMember(row: MemberRow): Member {
   return {
     id: memberId(row.id),
     familyId: familyId(row.family_id),
-    kind: row.kind,
+    // `kind` is a check-constrained text column; the generated type widens it to
+    // `string`, so narrow back to the domain union here (the one allowed cast).
+    kind: row.kind as MemberKind,
     displayName: row.display_name,
     ...(row.auth_user_id !== null ? { authUserId: row.auth_user_id } : {}),
     ...(row.pin_hash !== null ? { pinHash: row.pin_hash } : {}),
@@ -54,9 +50,12 @@ function toMember(row: MemberRow): Member {
  * service-role client and scopes **every** query by `familyId`, mirroring the
  * in-memory adapter — the shared contract proves the two interchangeable. RLS is
  * defense-in-depth; service-role bypasses it, so app-layer scoping is the guard.
+ *
+ * Takes the typed `SupabaseClient<Database>` (like the chores/submissions/points
+ * adapters) so queries are checked against the generated schema (#119).
  */
 export function supabaseMemberRepository(
-  client: SupabaseClient,
+  client: SupabaseClient<Database>,
 ): MemberRepository {
   return {
     async createFamily({ name, founderDisplayName, authUserId }) {
@@ -64,20 +63,15 @@ export function supabaseMemberRepository(
         .rpc("create_family", {
           p_name: name,
           p_founder_name: founderDisplayName,
-          p_auth_user_id: authUserId ?? null,
+          p_auth_user_id: authUserId ?? undefined,
         })
         .single();
       if (error) throw error;
-      const row = data as {
-        family_id: string;
-        family_name: string;
-        founder_id: string;
-      };
-      const fid = familyId(row.family_id);
-      const founderMemberId = memberId(row.founder_id);
+      const fid = familyId(data.family_id);
+      const founderMemberId = memberId(data.founder_id);
       const family: Family = {
         id: fid,
-        name: row.family_name,
+        name: data.family_name,
         createdBy: founderMemberId,
       };
       const founder: Member = {
@@ -98,11 +92,10 @@ export function supabaseMemberRepository(
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
-      const row = data as { id: string; name: string; created_by: string };
       return {
-        id: familyId(row.id),
-        name: row.name,
-        createdBy: memberId(row.created_by),
+        id: familyId(data.id),
+        name: data.name,
+        createdBy: memberId(data.created_by),
       };
     },
 
@@ -115,10 +108,10 @@ export function supabaseMemberRepository(
           display_name: displayName,
           pin_hash: hashPin(pin),
         })
-        .select(MEMBER_COLS)
+        .select("*")
         .single();
       if (error) throw error;
-      return toMember(data as MemberRow);
+      return toMember(data);
     },
 
     async addMember(input) {
@@ -131,54 +124,53 @@ export function supabaseMemberRepository(
           auth_user_id: input.authUserId ?? null,
           pin_hash: input.pinHash ?? null,
         })
-        .select(MEMBER_COLS)
+        .select("*")
         .single();
       if (error) throw error;
-      return toMember(data as MemberRow);
+      return toMember(data);
     },
 
     async verifyKidPin(family, id, pin) {
       const { data, error } = await client
         .from("members")
-        .select(MEMBER_COLS)
+        .select("*")
         .eq("id", id)
         .eq("family_id", family)
         .maybeSingle();
       if (error) throw error;
       if (!data) return null;
-      const row = data as MemberRow;
-      if (row.kind !== "kid" || row.pin_hash === null) return null;
-      return verifyPin(pin, row.pin_hash) ? toMember(row) : null;
+      if (data.kind !== "kid" || data.pin_hash === null) return null;
+      return verifyPin(pin, data.pin_hash) ? toMember(data) : null;
     },
 
     async getMember(family, id) {
       const { data, error } = await client
         .from("members")
-        .select(MEMBER_COLS)
+        .select("*")
         .eq("id", id)
         .eq("family_id", family)
         .maybeSingle();
       if (error) throw error;
-      return data ? toMember(data as MemberRow) : null;
+      return data ? toMember(data) : null;
     },
 
     async listMembers(family) {
       const { data, error } = await client
         .from("members")
-        .select(MEMBER_COLS)
+        .select("*")
         .eq("family_id", family);
       if (error) throw error;
-      return ((data ?? []) as MemberRow[]).map(toMember);
+      return (data ?? []).map(toMember);
     },
 
     async findByAuthUserId(authUserId) {
       const { data, error } = await client
         .from("members")
-        .select(MEMBER_COLS)
+        .select("*")
         .eq("auth_user_id", authUserId)
         .maybeSingle();
       if (error) throw error;
-      return data ? toMember(data as MemberRow) : null;
+      return data ? toMember(data) : null;
     },
   };
 }
