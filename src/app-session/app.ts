@@ -23,7 +23,14 @@ import {
   listMembers,
   verifyKidPin,
 } from "@/usecases/members";
+import { type PointsTotalInput, pointsTotal } from "@/usecases/points";
 import { type SwitchProfileInput, switchProfile } from "@/usecases/profile";
+import {
+  type DecideInput,
+  type ReviewItem,
+  decide,
+  getReviewQueue,
+} from "@/usecases/review";
 import {
   type RetrySubmissionInput,
   type SubmitPhotoInput,
@@ -63,6 +70,12 @@ export interface Session {
   submitPhoto(input: SubmitPhotoInput): Promise<Result<Submission>>;
   /** Re-run the judge on a submission stuck in `evaluating` — owner-or-parent (§7.2). */
   retrySubmission(input: RetrySubmissionInput): Promise<Result<Submission>>;
+  /** The parent review queue: pending submissions + verdict + signed photo URL — parent-only (§8.1). */
+  getReviewQueue(): Promise<Result<ReviewItem[]>>;
+  /** Approve/reject a pending submission — parent-only, authoritative; approve credits points once (§7.1). */
+  decide(input: DecideInput): Promise<Result<Submission>>;
+  /** A member's running points total — any family member (§8.1). */
+  pointsTotal(input: PointsTotalInput): Promise<Result<number>>;
 }
 
 export interface App {
@@ -99,6 +112,9 @@ export function makeApp(ports: Ports): App {
           submitPhoto(ports, ctx, input),
         retrySubmission: (input: RetrySubmissionInput) =>
           retrySubmission(ports, ctx, input),
+        getReviewQueue: () => getReviewQueue(ports, ctx),
+        decide: (input: DecideInput) => decide(ports, ctx, input),
+        pointsTotal: (input: PointsTotalInput) => pointsTotal(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {

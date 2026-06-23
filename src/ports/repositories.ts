@@ -11,7 +11,7 @@ import type {
 } from "@/domain/shared/ids";
 import type { Submission } from "@/domain/submission/types";
 
-import type { IsoDate } from "./clock";
+import type { IsoDate, IsoInstant } from "./clock";
 import type { Verdict } from "./judge";
 
 /**
@@ -126,6 +126,20 @@ export interface SubmissionRepository {
     familyId: FamilyId,
     id: SubmissionId,
     status: SubmissionStatus,
+  ): Promise<void>;
+  /**
+   * Record a parent's **authoritative** decision (§7.1): set the terminal status
+   * together with who decided and when. Approve/reject only — the points credit
+   * is the caller's separate, idempotent step.
+   */
+  recordDecision(
+    familyId: FamilyId,
+    id: SubmissionId,
+    decision: {
+      status: "approved" | "rejected";
+      decidedBy: MemberId;
+      decidedAt: IsoInstant;
+    },
   ): Promise<void>;
   listByStatus(
     familyId: FamilyId,
