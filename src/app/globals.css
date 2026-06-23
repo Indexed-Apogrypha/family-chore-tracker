@@ -225,6 +225,29 @@ button:disabled {
   color: color-mix(in srgb, currentColor 55%, transparent);
 }
 
+/* Kid photo capture (todo chores) */
+.capture {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+}
+
+.capture-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 0.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.capture-retry {
+  margin-left: 0.5rem;
+}
+
 .board-link {
   display: flex;
   gap: 1rem;
