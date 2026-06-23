@@ -23,6 +23,7 @@ import {
   listMembers,
   verifyKidPin,
 } from "@/usecases/members";
+import { type PointsTotalInput, pointsTotal } from "@/usecases/points";
 import { type SwitchProfileInput, switchProfile } from "@/usecases/profile";
 import {
   type DecideInput,
@@ -73,6 +74,8 @@ export interface Session {
   getReviewQueue(): Promise<Result<ReviewItem[]>>;
   /** Approve/reject a pending submission — parent-only, authoritative; approve credits points once (§7.1). */
   decide(input: DecideInput): Promise<Result<Submission>>;
+  /** A member's running points total — any family member (§8.1). */
+  pointsTotal(input: PointsTotalInput): Promise<Result<number>>;
 }
 
 export interface App {
@@ -111,6 +114,7 @@ export function makeApp(ports: Ports): App {
           retrySubmission(ports, ctx, input),
         getReviewQueue: () => getReviewQueue(ports, ctx),
         decide: (input: DecideInput) => decide(ports, ctx, input),
+        pointsTotal: (input: PointsTotalInput) => pointsTotal(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {
