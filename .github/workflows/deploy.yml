@@ -1,30 +1,47 @@
-name: Deploy to Vercel
+name: Deploy (staging → production)
 
-# Deploy on merge to main. The REAL gate is `if: github.ref == 'refs/heads/main'`
-# (authoritative on every plan). `environment: production` additionally applies
-# this repo's environment protection rules — required reviewers / wait timer —
-# but those are only ENFORCED on GitHub Pro/Team/Enterprise; on a free personal
-# private repo they are ignored, so we do not rely on them for correctness.
+# Every merge to `main` auto-deploys to an ISOLATED staging environment (its own
+# Supabase backend, via Vercel's Preview env scope). Graduating to production is a
+# GATED REBUILD of the same commit with production env — we can't byte-promote the
+# staging artifact because it bakes in staging's database (`NEXT_PUBLIC_*` differ).
+#
+# The `production` job waits at the `production` environment's required-reviewers
+# gate; one approval graduates the exact commit staging validated (`github.sha`).
+#
+# The guard keeps both jobs GREEN (skipped, not failed) until the Vercel secrets +
+# app exist, so the pipeline is safe to merge before configuration is complete.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit SHA / ref to deploy (defaults to the triggering commit)"
+        required: false
+        type: string
+
+# Least privilege: both jobs only check out code; deploys authenticate with
+# VERCEL_TOKEN, not GITHUB_TOKEN. (CodeQL: pin workflow token permissions.)
+permissions:
+  contents: read
 
 concurrency:
-  group: deploy-production
-  cancel-in-progress: false # never kill an in-flight production deploy
+  group: deploy-pipeline
+  cancel-in-progress: false # never kill an in-flight production build
 
 jobs:
-  deploy:
+  staging:
+    name: Deploy to staging
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    environment: production
+    environment: staging
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.sha }}
 
-      # Skip cleanly (green, not red) until the app + Vercel secrets exist.
       - name: Check deploy preconditions
         id: guard
         env:
@@ -37,7 +54,7 @@ jobs:
             echo "No package.json (app not built yet) — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Preconditions met — proceeding with deploy."
+            echo "Preconditions met — proceeding with staging deploy."
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -51,20 +68,121 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: npm install -g vercel@latest
 
-      - name: Pull Vercel production settings
+      - name: Pull staging (Preview) settings
+        if: steps.guard.outputs.ready == 'true'
+        run: vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build (staging env)
+        if: steps.guard.outputs.ready == 'true'
+        run: vercel build --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy prebuilt artifacts to staging
+        id: deploy
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          out="$(vercel deploy --prebuilt --token="$VERCEL_TOKEN")"
+          echo "$out"
+          url="$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9-]+\.vercel\.app' | tail -n1)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Alias to the stable staging URL
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          vercel alias set "${{ steps.deploy.outputs.url }}" \
+            family-chore-tracker-staging.vercel.app --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Summary
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          {
+            echo "### ✅ Staging deployed"
+            echo ""
+            echo "- Deployment: ${{ steps.deploy.outputs.url }}"
+            echo "- Stable URL: https://family-chore-tracker-staging.vercel.app"
+            echo "- Commit: \`${{ github.event.inputs.ref || github.sha }}\`"
+            echo ""
+            echo "Approve the **production** job below to graduate this exact commit to prod."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    name: Graduate to production
+    needs: staging
+    runs-on: ubuntu-latest
+    environment: production # required-reviewers gate — graduation waits here
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      # Re-checkout the SAME commit staging validated, then rebuild with prod env.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.sha }}
+
+      - name: Check deploy preconditions
+        id: guard
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "VERCEL_TOKEN not set — skipping deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ ! -f package.json ]; then
+            echo "No package.json (app not built yet) — skipping deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Preconditions met — proceeding with production deploy."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install Vercel CLI
+        if: steps.guard.outputs.ready == 'true'
+        run: npm install -g vercel@latest
+
+      - name: Pull production settings
         if: steps.guard.outputs.ready == 'true'
         run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      - name: Build
+      - name: Build (production env)
         if: steps.guard.outputs.ready == 'true'
         run: vercel build --prod --token="$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy prebuilt artifacts to production
+        id: deploy
         if: steps.guard.outputs.ready == 'true'
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        run: |
+          out="$(vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN")"
+          echo "$out"
+          url="$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9-]+\.vercel\.app' | tail -n1)"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Summary
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          {
+            echo "### 🚀 Production deployed"
+            echo ""
+            echo "- Deployment: ${{ steps.deploy.outputs.url }}"
+            echo "- Commit: \`${{ github.event.inputs.ref || github.sha }}\`"
+            echo ""
+            echo "Rollback if needed: \`vercel rollback <previous-deployment> --token=…\`"
+          } >> "$GITHUB_STEP_SUMMARY"

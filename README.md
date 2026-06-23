@@ -92,14 +92,37 @@ Every change goes through a branch → pull request → required checks
 
 ## Deployment
 
-Production deploys to **Vercel** through a **gated GitHub Actions workflow**
-([.github/workflows/deploy.yml](.github/workflows/deploy.yml)): a merge to `main`
-*queues* a deploy that waits for **manual approval** in the Actions UI (the
-`production` environment's required-reviewers rule). Merging is always safe —
-nothing ships until approved. The deploy needs `VERCEL_TOKEN` / `VERCEL_ORG_ID` /
-`VERCEL_PROJECT_ID` and the production `SUPABASE_*` secrets configured on the
-`production` environment, and Vercel's native Git auto-deploy disabled so the
-GitHub gate stays authoritative.
+Two environments on **Vercel**, driven by one GitHub Actions workflow
+([.github/workflows/deploy.yml](.github/workflows/deploy.yml)):
+
+- **Staging** — every merge to `main` auto-builds and deploys to an **isolated
+  staging environment** (its own Supabase project, via Vercel's *Preview* scope) at
+  **https://family-chore-tracker-staging.vercel.app**. No gate — validate here freely.
+- **Production** — graduating is a **gated rebuild of the same commit** (`github.sha`)
+  with production env. The `production` job waits at that environment's
+  required-reviewers rule; one approval ships it. (We rebuild rather than byte-promote
+  the staging artifact because the staging build bakes in staging's database.)
+
+Merging is always safe — nothing reaches production until approved. Rollback with
+`vercel rollback <previous-deployment>`.
+
+**Three aligned environments** — identical variable *names* in every Vercel scope;
+only the values differ:
+
+| Scope | Backend | Notes |
+|---|---|---|
+| Development | keyless (in-memory) | Supabase keys unset → practice mode |
+| Preview (staging) | staging Supabase | isolated test data |
+| Production | prod Supabase | live |
+
+Each real scope needs `VERCEL_TOKEN` / `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` (secrets)
+plus its `SUPABASE_*`, `NEXT_PUBLIC_SUPABASE_*`, and `JUDGE_GEMINI_API_KEY`. Vercel's
+native Git auto-deploy for `main` is **disabled** via [vercel.json](vercel.json)
+(`git.deploymentEnabled`) so the GitHub gate stays authoritative; CLI `--prebuilt`
+deploys and PR previews are unaffected.
+
+**Migrations** now touch two databases: apply to staging → validate → apply to prod →
+graduate; keep them backward-compatible.
 
 ## Security
 
