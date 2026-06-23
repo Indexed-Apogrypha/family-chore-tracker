@@ -41,6 +41,8 @@ export async function getReviewQueue(
         ports.photos.signedUrl({ path: submission.photoPath }),
         ports.chores.getInstance(ctx.familyId, submission.instanceId),
       ]);
+      // Display-only fallback if the instance is somehow missing; the
+      // authoritative points credit re-reads the instance in `decide`.
       return {
         submission,
         photoUrl,
@@ -87,11 +89,13 @@ export async function decide(
       id: input.submissionId,
     });
   }
+  const approve = input.decision === "approve";
+  const status = approve ? "approved" : "rejected";
   if (submission.status !== "pending_review") {
     return err({
       code: "invalid_transition",
       from: submission.status,
-      to: input.decision === "approve" ? "approved" : "rejected",
+      to: status,
     });
   }
 
@@ -109,14 +113,22 @@ export async function decide(
 
   const decidedAt = ports.clock.now();
 
-  if (input.decision === "approve") {
-    await ports.submissions.recordDecision(ctx.familyId, submission.id, {
-      status: "approved",
-      decidedBy: ctx.actor.memberId,
-      decidedAt,
-    });
-    await ports.chores.setInstanceStatus(ctx.familyId, instance.id, "approved");
-    // Idempotent on submissionId → "+points exactly once" even if replayed (§6).
+  // `recordDecision` is the commit point: it runs *before* the points credit, so
+  // a partial failure can never credit a still-pending submission, and the
+  // ledger's `submissionId` idempotency bounds double-credit on any replay. Full
+  // atomicity across these writes lands with the transactional Supabase adapter
+  // (follow-up #112).
+  await ports.submissions.recordDecision(ctx.familyId, submission.id, {
+    status,
+    decidedBy: ctx.actor.memberId,
+    decidedAt,
+  });
+  await ports.chores.setInstanceStatus(
+    ctx.familyId,
+    instance.id,
+    approve ? "approved" : "todo", // reject recycles the instance to todo (§7.1)
+  );
+  if (approve) {
     await ports.points.append({
       familyId: ctx.familyId,
       memberId: instance.assignedMemberId,
@@ -125,13 +137,6 @@ export async function decide(
       reason: "chore_approved",
       createdAt: decidedAt,
     });
-  } else {
-    await ports.submissions.recordDecision(ctx.familyId, submission.id, {
-      status: "rejected",
-      decidedBy: ctx.actor.memberId,
-      decidedAt,
-    });
-    await ports.chores.setInstanceStatus(ctx.familyId, instance.id, "todo");
   }
 
   const updated = await ports.submissions.get(ctx.familyId, submission.id);
