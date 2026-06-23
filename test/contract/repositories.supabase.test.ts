@@ -61,8 +61,33 @@ beforeEach(async () => {
 afterAll(wipe);
 
 describe("Supabase repositories — live integration (M6)", () => {
-  it("chores: create/list templates, idempotent generated upsert, one-off, scoping, status", async () => {
+  it("chores: create/list templates (description round-trip), active toggle scoping", async () => {
     const template = await chores.createTemplate({
+      familyId: family,
+      title: "Dishes",
+      description: "after dinner",
+      points: 5,
+      recurrence: { kind: "weekly", days: [1, 3, 5] },
+      assignedMemberId: kid,
+      active: true,
+    });
+    const listed = await chores.listTemplates(family);
+    expect(listed.map((t) => t.id)).toEqual([template.id]);
+    expect(listed[0].description).toBe("after dinner"); // text round-trip
+    expect(listed[0].recurrence).toEqual({ kind: "weekly", days: [1, 3, 5] }); // jsonb round-trip
+
+    const off = await chores.setTemplateActive(family, template.id, false);
+    expect(off?.active).toBe(false);
+    // Cross-family write resolves to null and mutates nothing (mirrors RLS).
+    expect(await chores.setTemplateActive(familyId("nope"), template.id, true)).toBeNull();
+    expect((await chores.listTemplates(family))[0].active).toBe(false);
+  });
+
+  it("chores: idempotent generated upsert; distinct member/dueDate/template; one-off; scoping; status", async () => {
+    const sibling = (
+      await members.addKid({ familyId: family, displayName: "Sib", pin: "9999" })
+    ).id;
+    const t1 = await chores.createTemplate({
       familyId: family,
       title: "Dishes",
       points: 5,
@@ -70,13 +95,18 @@ describe("Supabase repositories — live integration (M6)", () => {
       assignedMemberId: kid,
       active: true,
     });
-    expect((await chores.listTemplates(family)).map((t) => t.id)).toEqual([
-      template.id,
-    ]);
+    const t2 = await chores.createTemplate({
+      familyId: family,
+      title: "Beds",
+      points: 5,
+      recurrence: { kind: "daily" },
+      assignedMemberId: kid,
+      active: true,
+    });
 
     const gen = {
       familyId: family,
-      templateId: template.id,
+      templateId: t1.id,
       title: "Dishes",
       points: 5,
       assignedMemberId: kid,
@@ -86,7 +116,12 @@ describe("Supabase repositories — live integration (M6)", () => {
     const second = await chores.upsertGeneratedInstance(gen);
     expect(second.id).toBe(first.id); // idempotent on (template, member, due_date)
     expect(first.status).toBe("todo");
-    expect(await chores.listInstances(family, {})).toHaveLength(1);
+
+    // A different member, due_date, or template is a distinct instance.
+    const byMember = await chores.upsertGeneratedInstance({ ...gen, assignedMemberId: sibling });
+    const byDate = await chores.upsertGeneratedInstance({ ...gen, dueDate: "2026-06-22" });
+    const byTemplate = await chores.upsertGeneratedInstance({ ...gen, templateId: t2.id });
+    expect(new Set([first.id, byMember.id, byDate.id, byTemplate.id]).size).toBe(4);
 
     const oneOff = {
       familyId: family,
@@ -100,6 +135,10 @@ describe("Supabase repositories — live integration (M6)", () => {
     expect(a.templateId).toBeNull();
     expect(b.id).not.toBe(a.id); // one-offs sit outside the idempotency key
 
+    // listInstances filters by member; getInstance is family-scoped.
+    expect((await chores.listInstances(family, { assignedMemberId: sibling })).map((i) => i.id)).toEqual([
+      byMember.id,
+    ]);
     expect(await chores.getInstance(familyId("does-not-exist"), first.id)).toBeNull();
     await chores.setInstanceStatus(family, first.id, "evaluating");
     expect((await chores.getInstance(family, first.id))?.status).toBe("evaluating");
@@ -144,6 +183,8 @@ describe("Supabase repositories — live integration (M6)", () => {
     expect(decided?.status).toBe("approved");
     expect(decided?.decidedBy).toBe(parent);
     expect(decided?.aiVerdict?.pass).toBe(true);
+    // listByStatus excludes other statuses (it's now approved, not pending_review).
+    expect(await submissions.listByStatus(family, "pending_review")).toHaveLength(0);
   });
 
   it("points: totalFor sums, idempotent on submission_id, family-scoped", async () => {

@@ -107,10 +107,12 @@ export function supabaseChoreRepository(
       if (error.code !== UNIQUE_VIOLATION) throw error;
 
       // The generated key already exists — return the existing instance (§7.3).
+      // Select by exactly the partial-unique-index columns (which pin one row);
+      // family_id is intentionally omitted so the filter can never exclude the
+      // very row that raised the 23505.
       const existing = await client
         .from("chore_instances")
         .select("*")
-        .eq("family_id", input.familyId)
         .eq("template_id", input.templateId)
         .eq("assigned_member_id", input.assignedMemberId)
         .eq("due_date", input.dueDate)
