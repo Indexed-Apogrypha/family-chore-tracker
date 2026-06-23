@@ -255,12 +255,16 @@ type AppError =
   | { code: 'invalid_transition'; from: string; to: string }
   | { code: 'bad_pin' }
   | { code: 'judge_unavailable' }
+  | { code: 'storage_unavailable' }        // photo-storage infra fault (→ 503)
+  | { code: 'persistence_unavailable' }     // DB/persistence infra fault (→ 503)
   | { code: 'validation'; field: string; message: string }
 ```
 
 Expected failures are **values**, not exceptions, so the UI can handle them with
 compiler-checked exhaustiveness. Adapters may throw on true infrastructure faults;
-use-cases catch and map those (e.g. to `judge_unavailable`).
+use-cases catch and map those — `judge_unavailable` for the vision judge, and
+`storage_unavailable` / `persistence_unavailable` for the photo-storage and
+persistence seams (so `submitPhoto`/`retrySubmission` never escape as 500s, §7.2).
 
 ### 8.3 Request context & authorization
 
@@ -292,7 +296,15 @@ type Actor = { kind: 'parent'; memberId: MemberId } | { kind: 'kid'; memberId: M
 - **PIN** stored hashed; compared server-side in `verifyKidPin` against
   `pin_hash` (KDF chosen at implementation). App-level gate only (see §3.1).
 - **Photos** stored at `family_id/instance_id/submission_id.<ext>` with a
-  per-family storage policy; viewed via short-lived **signed URLs**.
+  per-family storage policy; viewed via short-lived **signed URLs**. The bucket
+  has per-path RLS keyed on the leading `family_id` segment (mirroring the table
+  RLS) so a parent JWT can only ever touch its own family's objects.
+- **Orphaned blobs:** `submitPhoto` stores the photo *before* the row exists
+  (§7.2 ordering), so a persistence fault can leave a blob with no `submissions`
+  row. This is a reclaimable orphan, not a correctness bug — a documented GC
+  ([`docs/ops/chore-photos-gc.md`](../../ops/chore-photos-gc.md)) deletes
+  `chore-photos` objects whose path `submission_id` has no row. Not wired as a
+  live cron (the app's scale doesn't warrant it); it's a runnable reclaim.
 - **Secrets** live only in env (`.env` gitignored); CI runs gitleaks.
 
 ## 10. Testing strategy

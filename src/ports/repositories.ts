@@ -128,6 +128,19 @@ export interface SubmissionRepository {
     status: SubmissionStatus,
   ): Promise<void>;
   /**
+   * Atomically attach the verdict and advance both the submission and its
+   * instance to `pending_review` (§7.2). One transaction on the Supabase adapter
+   * (an RPC) so an infra fault can't half-commit — leaving a verdict without an
+   * advanced status, or the submission advanced while its instance lags. The
+   * in-memory adapter writes both maps in one synchronous step.
+   */
+  recordVerdictAndAdvance(
+    familyId: FamilyId,
+    id: SubmissionId,
+    instanceId: InstanceId,
+    verdict: Verdict,
+  ): Promise<void>;
+  /**
    * Record a parent's **authoritative** decision (§7.1): set the terminal status
    * together with who decided and when. Approve/reject only — the points credit
    * is the caller's separate, idempotent step.

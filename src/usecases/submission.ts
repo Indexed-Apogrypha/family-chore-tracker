@@ -39,10 +39,11 @@ export async function submitPhoto(
   ctx: RequestContext,
   input: SubmitPhotoInput,
 ): Promise<Result<Submission>> {
-  const instance = await ports.chores.getInstance(
-    ctx.familyId,
-    input.instanceId,
+  const instanceR = await persistOp(() =>
+    ports.chores.getInstance(ctx.familyId, input.instanceId),
   );
+  if (!instanceR.ok) return instanceR;
+  const instance = instanceR.value;
   if (!instance) {
     return err({ code: "not_found", entity: "instance", id: input.instanceId });
   }
@@ -61,27 +62,35 @@ export async function submitPhoto(
   // Mint the id up front: the photo path is keyed on it (§9) and the spec orders
   // `put` before `create` (§7.2), so both calls share this single source of truth.
   const id = submissionId(crypto.randomUUID());
-  const ref = await ports.photos.put(input.bytes, {
-    familyId: ctx.familyId,
-    instanceId: input.instanceId,
-    submissionId: id,
-    contentType: input.contentType,
-  });
+  const refR = await storeOp(() =>
+    ports.photos.put(input.bytes, {
+      familyId: ctx.familyId,
+      instanceId: input.instanceId,
+      submissionId: id,
+      contentType: input.contentType,
+    }),
+  );
+  if (!refR.ok) return refR; // photo never stored; nothing to clean up
+  const ref = refR.value;
 
   // Persist first — the photo is durable and the state recorded before the
-  // fallible judge runs.
-  await ports.submissions.create({
-    id,
-    familyId: ctx.familyId,
-    instanceId: input.instanceId,
-    submittedBy: ctx.actor.memberId,
-    photoPath: ref.path,
+  // fallible judge runs. A fault here leaves a stored blob with no row; that
+  // orphan is reclaimable by the documented GC (§9), not a correctness bug.
+  const persisted = await persistOp(async () => {
+    await ports.submissions.create({
+      id,
+      familyId: ctx.familyId,
+      instanceId: input.instanceId,
+      submittedBy: ctx.actor.memberId,
+      photoPath: ref.path,
+    });
+    await ports.chores.setInstanceStatus(
+      ctx.familyId,
+      input.instanceId,
+      "evaluating",
+    );
   });
-  await ports.chores.setInstanceStatus(
-    ctx.familyId,
-    input.instanceId,
-    "evaluating",
-  );
+  if (!persisted.ok) return persisted;
 
   const verdict = await runJudge(ports, ref.path, instance, id);
   if (!verdict.ok) return verdict; // stays evaluating; photo kept; retry via `id`
@@ -99,10 +108,11 @@ export async function retrySubmission(
   ctx: RequestContext,
   input: RetrySubmissionInput,
 ): Promise<Result<Submission>> {
-  const submission = await ports.submissions.get(
-    ctx.familyId,
-    input.submissionId,
+  const submissionR = await persistOp(() =>
+    ports.submissions.get(ctx.familyId, input.submissionId),
   );
+  if (!submissionR.ok) return submissionR;
+  const submission = submissionR.value;
   if (!submission) {
     return err({
       code: "not_found",
@@ -111,10 +121,11 @@ export async function retrySubmission(
     });
   }
 
-  const instance = await ports.chores.getInstance(
-    ctx.familyId,
-    submission.instanceId,
+  const instanceR = await persistOp(() =>
+    ports.chores.getInstance(ctx.familyId, submission.instanceId),
   );
+  if (!instanceR.ok) return instanceR;
+  const instance = instanceR.value;
   if (!instance) {
     return err({
       code: "not_found",
@@ -183,13 +194,45 @@ async function advanceToPendingReview(
   instanceId: InstanceId,
   verdict: Verdict,
 ): Promise<Result<Submission>> {
-  await ports.submissions.recordVerdict(ctx.familyId, id, verdict);
-  await ports.submissions.setStatus(ctx.familyId, id, "pending_review");
-  await ports.chores.setInstanceStatus(ctx.familyId, instanceId, "pending_review");
+  // One atomic op (a transaction on the real adapter) so the verdict + both
+  // statuses can't half-commit if persistence faults mid-advance (§7.2, M2).
+  const advanced = await persistOp(() =>
+    ports.submissions.recordVerdictAndAdvance(ctx.familyId, id, instanceId, verdict),
+  );
+  if (!advanced.ok) return advanced;
 
-  const submission = await ports.submissions.get(ctx.familyId, id);
-  if (!submission) {
+  const submissionR = await persistOp(() =>
+    ports.submissions.get(ctx.familyId, id),
+  );
+  if (!submissionR.ok) return submissionR;
+  if (!submissionR.value) {
     return err({ code: "not_found", entity: "submission", id });
   }
-  return ok(submission);
+  return ok(submissionR.value);
+}
+
+/**
+ * Run a photo-storage op, mapping a thrown infra fault to the closed
+ * `storage_unavailable` value (§8.2) — the photo isn't durable, so the caller
+ * can retry rather than seeing a 500.
+ */
+async function storeOp<T>(op: () => Promise<T>): Promise<Result<T>> {
+  try {
+    return ok(await op());
+  } catch {
+    return err({ code: "storage_unavailable" });
+  }
+}
+
+/**
+ * Run a persistence op, mapping a thrown infra fault to `persistence_unavailable`
+ * (§8.2). Reads and writes alike — a DB fault becomes a value the UI can handle,
+ * not a 500.
+ */
+async function persistOp<T>(op: () => Promise<T>): Promise<Result<T>> {
+  try {
+    return ok(await op());
+  } catch {
+    return err({ code: "persistence_unavailable" });
+  }
 }

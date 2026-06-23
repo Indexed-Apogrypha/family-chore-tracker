@@ -12,6 +12,8 @@ const ERROR_COPY: Record<string, string> = {
   invalid_transition: "That was already decided — refreshing.",
   bad_pin: "Wrong PIN — try again.",
   judge_unavailable: "Couldn't check it just now — your photo is saved.",
+  storage_unavailable: "Couldn't save your photo just now — please try again.",
+  persistence_unavailable: "Couldn't save that just now — please try again.",
   validation: "Please check the form and try again.",
   // HTTP-layer codes the route handlers add
   unauthenticated: "Please sign in again.",

@@ -55,6 +55,26 @@ export function runSubmissionRepositoryContract(
       expect(got?.status).toBe("pending_review");
     });
 
+    it("recordVerdictAndAdvance attaches the verdict and advances the submission (#112)", async () => {
+      const repo = makeRepo();
+      const sub = await repo.create(newSubmissionInput());
+      const verdict: Verdict = {
+        pass: true,
+        confidence: 0.9,
+        reasoning: "looks done",
+        model: "fake",
+      };
+      await repo.recordVerdictAndAdvance(
+        familyId("f1"),
+        sub.id,
+        instanceId("i1"),
+        verdict,
+      );
+      const got = await repo.get(familyId("f1"), sub.id);
+      expect(got?.aiVerdict).toEqual(verdict);
+      expect(got?.status).toBe("pending_review");
+    });
+
     it("supports many submissions per instance and lists by status (review queue)", async () => {
       const repo = makeRepo();
       const a = await repo.create(newSubmissionInput("a"));

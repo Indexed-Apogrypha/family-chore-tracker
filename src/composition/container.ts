@@ -6,6 +6,7 @@ import { anthropicJudge } from "@/adapters/judge/anthropic";
 import { fakeJudge } from "@/adapters/judge/fake";
 import { geminiJudge } from "@/adapters/judge/gemini";
 import {
+  createInMemoryStore,
   inMemoryChoreRepository,
   inMemoryMemberRepository,
   inMemoryPointsLedger,
@@ -99,12 +100,15 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
   }
 
   const photos = inMemoryPhotoStorage();
+  // One shared store so the chore + submission repos observe each other's writes
+  // (the atomic `recordVerdictAndAdvance`, §7.2) — like the single Supabase DB.
+  const store = createInMemoryStore();
   return {
     judge: selectJudge(config.judge, photos),
     clock: systemClock(),
     photos,
-    chores: inMemoryChoreRepository(),
-    submissions: inMemorySubmissionRepository(),
+    chores: inMemoryChoreRepository(store),
+    submissions: inMemorySubmissionRepository(store),
     members: inMemoryMemberRepository(),
     points: inMemoryPointsLedger(),
   };

@@ -330,6 +330,15 @@ export type Database = {
           founder_id: string;
         }[];
       };
+      record_verdict_and_advance: {
+        Args: {
+          p_family_id: string;
+          p_instance_id: string;
+          p_submission_id: string;
+          p_verdict: Json;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       [_ in never]: never;

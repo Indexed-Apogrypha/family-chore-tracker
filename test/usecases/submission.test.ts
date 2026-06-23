@@ -156,6 +156,46 @@ describe("submitPhoto (owner-or-parent, §7.2)", () => {
     expect(unwrap(result).status).toBe("pending_review");
   });
 
+  it("maps a photo-storage fault to storage_unavailable, not a 500 (#112)", async () => {
+    const { ports, kidCtx, instance } = await seed();
+    const failing: Ports = {
+      ...ports,
+      photos: {
+        ...ports.photos,
+        async put() {
+          throw new Error("storage down");
+        },
+      },
+    };
+    const result = await submitPhoto(failing, kidCtx, {
+      instanceId: instance.id,
+      bytes: PHOTO,
+      contentType: "image/jpeg",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("storage_unavailable");
+  });
+
+  it("maps a persistence fault to persistence_unavailable, not a 500 (#112)", async () => {
+    const { ports, kidCtx, instance } = await seed();
+    const failing: Ports = {
+      ...ports,
+      submissions: {
+        ...ports.submissions,
+        async create() {
+          throw new Error("db down");
+        },
+      },
+    };
+    const result = await submitPhoto(failing, kidCtx, {
+      instanceId: instance.id,
+      bytes: PHOTO,
+      contentType: "image/jpeg",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("persistence_unavailable");
+  });
+
   it("records the verdict but never advances past pending_review — advisory only (§7.1)", async () => {
     // Even a confident pass verdict only reaches pending_review; only a parent's
     // decision (M5) advances to approved. The verdict is persisted verbatim.

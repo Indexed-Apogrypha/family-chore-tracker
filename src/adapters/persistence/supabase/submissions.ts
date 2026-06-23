@@ -84,6 +84,19 @@ export function supabaseSubmissionRepository(
       if (error) throw error;
     },
 
+    async recordVerdictAndAdvance(family, id, instance, verdict) {
+      // One transaction (the SECURITY DEFINER RPC) updates the submission's
+      // verdict + status AND the instance's status together, so an infra fault
+      // can't half-commit (§7.2, M2).
+      const { error } = await client.rpc("record_verdict_and_advance", {
+        p_family_id: family,
+        p_submission_id: id,
+        p_instance_id: instance,
+        p_verdict: verdict as unknown as Json,
+      });
+      if (error) throw error;
+    },
+
     async recordDecision(family, id, decision) {
       const { error } = await client
         .from("submissions")
