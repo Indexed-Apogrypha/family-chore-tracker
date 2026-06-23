@@ -164,25 +164,29 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      # Split deploy from promotion. `vercel deploy --prebuilt --prod` does an
-      # INLINE domain promotion that can hang indefinitely on its post-deploy
-      # wait (observed ~25min, deployment READY but alias never flipped).
-      # `--skip-domain` creates the production deployment and returns fast; we
-      # then promote explicitly — quick, and bounded by promote's --timeout (3m).
-      - name: Deploy prebuilt artifacts to production (skip auto-promote)
+      # `vercel deploy --prebuilt --prod` blocks until the deployment "finishes",
+      # and that wait HANGS indefinitely on this project (the deployment reaches
+      # READY but the command never returns — observed 25min+, with AND without
+      # --skip-domain). So no single command is allowed to wait unbounded:
+      #   1) deploy --no-wait          → returns immediately with the deployment URL
+      #   2) inspect --wait --timeout  → bounded readiness gate (cannot hang)
+      #   3) promote                   → assign the production domain (fast, ~1s)
+      - name: Deploy prebuilt artifacts to production (no-wait)
         id: deploy
         if: steps.guard.outputs.ready == 'true'
         run: |
-          out="$(vercel deploy --prebuilt --prod --skip-domain --token="$VERCEL_TOKEN")"
+          out="$(vercel deploy --prebuilt --prod --skip-domain --no-wait --token="$VERCEL_TOKEN")"
           echo "$out"
           url="$(printf '%s\n' "$out" | grep -Eo 'https://[a-z0-9-]+\.vercel\.app' | tail -n1)"
           echo "url=$url" >> "$GITHUB_OUTPUT"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      - name: Promote to the production domain
+      - name: Wait for READY, then promote to the production domain
         if: steps.guard.outputs.ready == 'true'
-        run: vercel promote "${{ steps.deploy.outputs.url }}" --yes --token="$VERCEL_TOKEN"
+        run: |
+          vercel inspect "${{ steps.deploy.outputs.url }}" --wait --timeout 5m --token="$VERCEL_TOKEN"
+          vercel promote "${{ steps.deploy.outputs.url }}" --yes --token="$VERCEL_TOKEN"
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
