@@ -11,7 +11,10 @@ import {
   inMemoryPointsLedger,
   inMemorySubmissionRepository,
 } from "@/adapters/persistence/in-memory";
+import { supabaseChoreRepository } from "@/adapters/persistence/supabase/chores";
 import { supabaseMemberRepository } from "@/adapters/persistence/supabase/members";
+import { supabasePointsLedger } from "@/adapters/persistence/supabase/points-ledger";
+import { supabaseSubmissionRepository } from "@/adapters/persistence/supabase/submissions";
 import { inMemoryPhotoStorage } from "@/adapters/storage/in-memory";
 import { supabasePhotoStorage } from "@/adapters/storage/supabase";
 import type { JudgePort } from "@/ports/judge";
@@ -62,8 +65,9 @@ function selectJudge(config: JudgeConfig, photos: PhotoStorage): JudgePort {
 
 export function buildPorts(config: EnvConfig = readEnv()): Ports {
   if (config.persistence.kind === "supabase") {
-    // Members + photos persist to Supabase (M1, M3); chores / submissions /
-    // points stay in-memory until M6. The contract suites make the swap low-risk.
+    // Real mode: every seam persists to Supabase via the server-only service-role
+    // client (members M1, photos M3, chores/submissions/points M6). The shared
+    // contract suites proved the adapters interchangeable with the in-memory spec.
     const client = createServiceRoleClient(
       config.persistence.url,
       config.persistence.serviceRoleKey,
@@ -76,10 +80,10 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
       judge: selectJudge(config.judge, photos),
       clock: systemClock(),
       photos,
-      chores: inMemoryChoreRepository(),
-      submissions: inMemorySubmissionRepository(),
+      chores: supabaseChoreRepository(client),
+      submissions: supabaseSubmissionRepository(client),
       members: supabaseMemberRepository(client),
-      points: inMemoryPointsLedger(),
+      points: supabasePointsLedger(client),
     };
   }
 

@@ -5,6 +5,8 @@ import {
 } from "@supabase/ssr";
 import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 
+import type { Database } from "./database.types";
+
 /**
  * Supabase client factories. They live in `composition/` because it is the only
  * place allowed to read env / wire infrastructure (the dependency-rule guard).
@@ -20,8 +22,8 @@ import { type SupabaseClient, createClient } from "@supabase/supabase-js";
 export function createServiceRoleClient(
   url: string,
   serviceRoleKey: string,
-): SupabaseClient {
-  return createClient(url, serviceRoleKey, {
+): SupabaseClient<Database> {
+  return createClient<Database>(url, serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }
