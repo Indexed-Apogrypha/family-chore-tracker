@@ -16,6 +16,9 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    // Force keyless: strip any real-mode env Vitest loaded from `.env`, so the
+    // env-selected composition can never write to a live backend (#103).
+    setupFiles: ["./test/setup/keyless-env.ts"],
     include: ["test/**/*.test.ts", "src/**/*.test.ts"],
     exclude: [...configDefaults.exclude, "**/*.supabase.test.ts"],
   },
