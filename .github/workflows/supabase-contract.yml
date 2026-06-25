@@ -38,12 +38,16 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      # TODO(verify SHA): pin verified before this first runs. This is the commit
-      # for supabase/setup-cli v1.0.0 (tag-resolved); confirm it on github.com
-      # before relying on it. This workflow is nightly + non-blocking, so an
-      # unverified pin here can never gate a merge.
+      # PLACEHOLDER SHA — must be resolved before enabling this workflow.
+      # The dev sandbox blocks api.github.com / git ls-remote (#142), so the real
+      # commit for supabase/setup-cli@v1 could not be resolved here. The all-zero
+      # SHA below is a deliberate, unmistakable placeholder (not a real commit):
+      # from a machine with GitHub egress run
+      #   gh api repos/supabase/setup-cli/git/refs/tags/v1 --jq .object.sha
+      # and replace it, keeping the `# v1` comment for Dependabot. This workflow is
+      # nightly + non-blocking, so the placeholder can never gate a merge.
       - name: Install Supabase CLI
-        uses: supabase/setup-cli@2f5b6da6e6e88296b6e4f4a3f10f5ca1d5d0a51c # v1.0.0
+        uses: supabase/setup-cli@0000000000000000000000000000000000000000 # v1
         with:
           version: latest
 

@@ -176,11 +176,17 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # TODO(verify SHA): confirm this commit on github.com before relying on it.
-      # This is the commit for supabase/setup-cli v1.0.0 (tag-resolved).
+      # PLACEHOLDER SHA — must be resolved before this schema gate is relied upon.
+      # The dev sandbox blocks api.github.com (#142), so supabase/setup-cli@v1
+      # could not be SHA-resolved here. The all-zero SHA is a deliberate,
+      # unmistakable placeholder (not a real commit): from a machine with GitHub
+      # egress run `gh api repos/supabase/setup-cli/git/refs/tags/v1 --jq .object.sha`
+      # and replace it, keeping the `# v1` comment for Dependabot. The job is
+      # guarded (skips when the Supabase secrets are absent), so an unresolved pin
+      # cannot block the gated production deploy until the secrets are configured.
       - name: Install Supabase CLI
         if: steps.guard.outputs.ready == 'true'
-        uses: supabase/setup-cli@2f5b6da6e6e88296b6e4f4a3f10f5ca1d5d0a51c # v1.0.0
+        uses: supabase/setup-cli@0000000000000000000000000000000000000000 # v1
         with:
           version: latest
 
