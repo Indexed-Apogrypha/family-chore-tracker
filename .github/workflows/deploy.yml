@@ -33,6 +33,7 @@ jobs:
   staging:
     name: Deploy to staging
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: staging
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -46,6 +47,7 @@ jobs:
         id: guard
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           if [ -z "${VERCEL_TOKEN:-}" ]; then
             echo "VERCEL_TOKEN not set — skipping deploy."
@@ -53,6 +55,12 @@ jobs:
           elif [ ! -f package.json ]; then
             echo "No package.json (app not built yet) — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "${BYPASS:-}" ]; then
+            # Fail FAST and LOUD: the runtime smoke checks send the bypass header,
+            # so a missing bypass secret would otherwise surface as a confusing 401
+            # deep in the run and wedge every deploy. Make the cause explicit here.
+            echo "::error::VERCEL_TOKEN is set but VERCEL_AUTOMATION_BYPASS_SECRET is missing — the smoke checks would 401. Configure the bypass secret, or unset VERCEL_TOKEN to skip deploys."
+            exit 1
           else
             echo "Preconditions met — proceeding with staging deploy."
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -102,7 +110,7 @@ jobs:
           BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           url="${{ steps.deploy.outputs.url }}"
-          code="$(curl -H "x-vercel-protection-bypass: $BYPASS" -sSL \
+          code="$(curl -H "x-vercel-protection-bypass: $BYPASS" -sSL --max-time 30 \
             -o /dev/null -w '%{http_code}' "$url/")"
           echo "GET $url/ (bypass) -> $code"
           if [ "$code" != "200" ]; then
@@ -135,6 +143,7 @@ jobs:
     name: Graduate to production
     needs: staging
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production # required-reviewers gate — graduation waits here
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -149,6 +158,7 @@ jobs:
         id: guard
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           if [ -z "${VERCEL_TOKEN:-}" ]; then
             echo "VERCEL_TOKEN not set — skipping deploy."
@@ -156,6 +166,12 @@ jobs:
           elif [ ! -f package.json ]; then
             echo "No package.json (app not built yet) — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "${BYPASS:-}" ]; then
+            # Fail FAST and LOUD: the pre-promote smoke sends the bypass header,
+            # so a missing bypass secret would otherwise surface as a confusing 401
+            # deep in the run and wedge every deploy. Make the cause explicit here.
+            echo "::error::VERCEL_TOKEN is set but VERCEL_AUTOMATION_BYPASS_SECRET is missing — the smoke checks would 401. Configure the bypass secret, or unset VERCEL_TOKEN to skip deploys."
+            exit 1
           else
             echo "Preconditions met — proceeding with production deploy."
             echo "ready=true" >> "$GITHUB_OUTPUT"

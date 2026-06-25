@@ -38,6 +38,7 @@ jobs:
     # re-add `claude-review` to the protect-main required checks.
     if: ${{ vars.CLAUDE_REVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
