@@ -116,7 +116,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Advisory (NOT a required check): nudges branch-naming without risking lockout.
+  # Advisory (NOT a required check): nudges branch-naming via a warning
+  # annotation — it never fails, so it can't show a red X or risk a lockout.
   branch-name:
     name: branch-name
     runs-on: ubuntu-latest
@@ -130,7 +131,7 @@ jobs:
           set -euo pipefail
           pattern='^(feat|fix|chore|docs|refactor|test|ci|perf|build|revert)/'
           if [[ ! "$HEAD_REF" =~ $pattern ]]; then
-            echo "::error::Branch '$HEAD_REF' must start with one of: feat/ fix/ chore/ docs/ refactor/ test/ ci/ perf/ build/ revert/"
-            exit 1
+            echo "::warning::Branch '$HEAD_REF' does not start with one of: feat/ fix/ chore/ docs/ refactor/ test/ ci/ perf/ build/ revert/ (advisory only)"
+          else
+            echo "Branch name OK: $HEAD_REF"
           fi
-          echo "Branch name OK: $HEAD_REF"
