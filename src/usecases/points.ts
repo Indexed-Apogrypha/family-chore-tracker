@@ -1,8 +1,10 @@
 import type { MemberId } from "@/domain/shared/ids";
-import { err, ok } from "@/domain/shared/result";
+import { ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
+
+import { requireFamilyMember } from "./resolve";
 
 export interface PointsTotalInput {
   memberId: MemberId;
@@ -19,9 +21,7 @@ export async function pointsTotal(
   ctx: RequestContext,
   input: PointsTotalInput,
 ): Promise<Result<number>> {
-  const member = await ports.members.getMember(ctx.familyId, input.memberId);
-  if (!member) {
-    return err({ code: "not_found", entity: "member", id: input.memberId });
-  }
+  const member = await requireFamilyMember(ports, ctx, input.memberId);
+  if (!member.ok) return member;
   return ok(await ports.points.totalFor(ctx.familyId, input.memberId));
 }

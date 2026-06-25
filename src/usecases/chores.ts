@@ -9,6 +9,7 @@ import type { IsoDate } from "@/ports/clock";
 import type { RequestContext } from "@/ports/context";
 
 import { requireParent } from "./authz";
+import { requireFamilyMember } from "./resolve";
 import {
   optionalDescription,
   requireDate,
@@ -50,17 +51,8 @@ export async function createTemplate(
   const recurrence = requireRecurrence(input.recurrence);
   if (!recurrence.ok) return recurrence;
 
-  const assignee = await ports.members.getMember(
-    ctx.familyId,
-    input.assignedMemberId,
-  );
-  if (!assignee) {
-    return err({
-      code: "not_found",
-      entity: "member",
-      id: input.assignedMemberId,
-    });
-  }
+  const assignee = await requireFamilyMember(ports, ctx, input.assignedMemberId);
+  if (!assignee.ok) return assignee;
 
   const template = await ports.chores.createTemplate({
     familyId: ctx.familyId,
@@ -104,17 +96,8 @@ export async function createOneOff(
   const dueDate = requireDate("dueDate", input.dueDate);
   if (!dueDate.ok) return dueDate;
 
-  const assignee = await ports.members.getMember(
-    ctx.familyId,
-    input.assignedMemberId,
-  );
-  if (!assignee) {
-    return err({
-      code: "not_found",
-      entity: "member",
-      id: input.assignedMemberId,
-    });
-  }
+  const assignee = await requireFamilyMember(ports, ctx, input.assignedMemberId);
+  if (!assignee.ok) return assignee;
 
   const instance = await ports.chores.createOneOff({
     familyId: ctx.familyId,
@@ -149,10 +132,8 @@ export async function getTodayBoard(
   ctx: RequestContext,
   input: GetTodayBoardInput,
 ): Promise<Result<ChoreInstance[]>> {
-  const member = await ports.members.getMember(ctx.familyId, input.memberId);
-  if (!member) {
-    return err({ code: "not_found", entity: "member", id: input.memberId });
-  }
+  const member = await requireFamilyMember(ports, ctx, input.memberId);
+  if (!member.ok) return member;
 
   const date = input.date ?? ports.clock.today();
 
