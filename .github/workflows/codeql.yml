@@ -7,10 +7,10 @@ name: CodeQL
 # GitHub's "default setup" is kept DISABLED (apply-governance.sh enforces this) —
 # the two configurations cannot run at the same time.
 #
-# ADVISORY, NOT a required check: code scanning is asynchronous and can be slow,
-# and the app is still near-empty. It is intentionally NOT in the `protect-main`
-# required checks, so a slow or failing run never blocks a merge. Once the app
-# has real code, it can be promoted to a required check in
+# ADVISORY, NOT a required check: code scanning is asynchronous and can be slow.
+# It is intentionally NOT in the `protect-main` required checks, so a slow or
+# failing run never blocks a merge. As the app's surface grows it can be promoted
+# to a required check in
 # .github/rulesets/protect-main.json + .github/setup/apply-governance.sh.
 on:
   push:

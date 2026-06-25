@@ -53,7 +53,7 @@ jobs:
             echo "VERCEL_TOKEN not set — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           elif [ ! -f package.json ]; then
-            echo "No package.json (app not built yet) — skipping deploy."
+            echo "No package.json — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           elif [ -z "${BYPASS:-}" ]; then
             # Fail FAST and LOUD: the runtime smoke checks send the bypass header,
@@ -164,7 +164,7 @@ jobs:
             echo "VERCEL_TOKEN not set — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           elif [ ! -f package.json ]; then
-            echo "No package.json (app not built yet) — skipping deploy."
+            echo "No package.json — skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           elif [ -z "${BYPASS:-}" ]; then
             # Fail FAST and LOUD: the pre-promote smoke sends the bypass header,
