@@ -38,8 +38,9 @@ jobs:
     # re-add `claude-review` to the protect-main required checks.
     if: ${{ vars.CLAUDE_REVIEW_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Review the diff with Claude (forced structured verdict)
         env:

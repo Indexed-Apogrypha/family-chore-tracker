@@ -11,8 +11,12 @@ passing every gate.
 ```
 issue  →  feature branch  →  pull request  →  [ gates ]  →  squash-merge to main  →  gated deploy
                                                   │
-              lint · typecheck · test · build · secret-scan · pr-title · claude-review
+              lint · typecheck · test · build · secret-scan · pr-title
 ```
+
+(`claude-review` is part of the design but is **currently disabled** — it calls
+the paid Anthropic API on an unfunded account, so it was removed from the
+required checks. See `.github/setup/apply-governance.sh` for how to re-enable it.)
 
 Direct pushes to `main` are blocked for everyone, including the repository owner.
 The only way a change reaches `main` is a pull request with every required check green.
@@ -61,22 +65,25 @@ The PR cannot merge until all required checks succeed:
 
 | Check          | What it guards |
 | -------------- | -------------- |
-| `lint`         | Lint passes (no-ops until a `lint` script exists) |
+| `lint`         | `eslint` passes |
 | `typecheck`    | `tsc` type checks |
 | `test`         | Vitest suite |
 | `build`        | `next build` succeeds |
 | `secret-scan`  | gitleaks finds no committed secrets |
 | `pr-title`     | PR title is a valid Conventional Commit |
-| `claude-review`| Automated Claude review signs off on the diff |
+
+Each `lint`/`typecheck`/`test`/`build` check runs its npm script via
+`.github/scripts/run-script.sh`, which **fails closed**: deleting `package.json`
+or renaming one of those scripts errors the check rather than passing, so a gate
+can't be silently disabled.
+
+`claude-review` is part of the design but is **currently disabled** (unfunded
+Anthropic API account) and is not in the required checks for now.
 
 Two checks run but are **advisory, not required**, so they never block a merge:
 `branch-name` (nudges the branch-prefix convention) and `CodeQL` (static
 analysis / code scanning — results appear under the repo's Security tab). CodeQL
-can be promoted to a required check once the app has real code.
-
-CI jobs **no-op-pass** while the application code does not yet exist, so the
-pipeline is green from day one and the real checks switch on automatically as
-the app lands.
+can be promoted to a required check as the app's surface grows.
 
 Other ruleset rules: the branch must be **up to date** with `main` before merge,
 history must stay **linear**, and **force-pushes and deletion of `main` are

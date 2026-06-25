@@ -7,10 +7,10 @@ name: CodeQL
 # GitHub's "default setup" is kept DISABLED (apply-governance.sh enforces this) —
 # the two configurations cannot run at the same time.
 #
-# ADVISORY, NOT a required check: code scanning is asynchronous and can be slow,
-# and the app is still near-empty. It is intentionally NOT in the `protect-main`
-# required checks, so a slow or failing run never blocks a merge. Once the app
-# has real code, it can be promoted to a required check in
+# ADVISORY, NOT a required check: code scanning is asynchronous and can be slow.
+# It is intentionally NOT in the `protect-main` required checks, so a slow or
+# failing run never blocks a merge. As the app's surface grows it can be promoted
+# to a required check in
 # .github/rulesets/protect-main.json + .github/setup/apply-governance.sh.
 on:
   push:
@@ -28,6 +28,7 @@ jobs:
   analyze:
     name: analyze
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read
@@ -39,16 +40,16 @@ jobs:
         # themselves (catches e.g. script injection via untrusted ${{ ... }}).
         language: [javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
           languages: ${{ matrix.language }}
           # Both languages are interpreted, so CodeQL scans source directly.
           build-mode: none
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v4
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4
         with:
           category: '/language:${{ matrix.language }}'

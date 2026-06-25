@@ -14,7 +14,10 @@ updates:
           - "minor"
           - "patch"
 
-  # Keep the GitHub Actions used in workflows up to date (and SHA pins fresh).
+  # Keep the GitHub Actions used in workflows up to date. NOTE: the workflows
+  # currently reference actions by mutable major tags (e.g. @v7), NOT by commit
+  # SHA. Pinning each `uses:` to a digest (with a trailing `# vX` comment) is the
+  # hardening goal — Dependabot then bumps the digest in place and keeps it fresh.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
