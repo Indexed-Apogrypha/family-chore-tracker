@@ -330,6 +330,17 @@ export type Database = {
           founder_id: string;
         }[];
       };
+      record_decision_and_advance: {
+        Args: {
+          p_decided_at: string;
+          p_decided_by: string;
+          p_family_id: string;
+          p_instance_id: string;
+          p_status: string;
+          p_submission_id: string;
+        };
+        Returns: undefined;
+      };
       record_verdict_and_advance: {
         Args: {
           p_family_id: string;

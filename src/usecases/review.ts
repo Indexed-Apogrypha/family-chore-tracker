@@ -6,6 +6,7 @@ import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 
 import { requireParent } from "./authz";
+import { persistOp, storeOp } from "./infra";
 
 /** A submission awaiting a parent's decision, with a viewable photo URL (§8.1). */
 export interface ReviewItem {
@@ -31,26 +32,38 @@ export async function getReviewQueue(
   const gate = requireParent(ctx);
   if (!gate.ok) return gate;
 
-  const submissions = await ports.submissions.listByStatus(
-    ctx.familyId,
-    "pending_review",
+  const submissions = await persistOp(() =>
+    ports.submissions.listByStatus(ctx.familyId, "pending_review"),
   );
-  const items = await Promise.all(
-    submissions.map(async (submission) => {
+  if (!submissions.ok) return submissions;
+
+  // Resolve every item concurrently (as before), but each port call is mapped to
+  // a value, so a storage/persistence fault surfaces as an AppError rather than a
+  // rejected Promise.all → unhandled 500 (#134).
+  const resolved = await Promise.all(
+    submissions.value.map(async (submission): Promise<Result<ReviewItem>> => {
       const [photoUrl, instance] = await Promise.all([
-        ports.photos.signedUrl({ path: submission.photoPath }),
-        ports.chores.getInstance(ctx.familyId, submission.instanceId),
+        storeOp(() => ports.photos.signedUrl({ path: submission.photoPath })),
+        persistOp(() => ports.chores.getInstance(ctx.familyId, submission.instanceId)),
       ]);
+      if (!photoUrl.ok) return photoUrl;
+      if (!instance.ok) return instance;
       // Display-only fallback if the instance is somehow missing; the
       // authoritative points credit re-reads the instance in `decide`.
-      return {
+      return ok({
         submission,
-        photoUrl,
-        choreTitle: instance?.title ?? "Chore",
-        points: instance?.points ?? 0,
-      };
+        photoUrl: photoUrl.value,
+        choreTitle: instance.value?.title ?? "Chore",
+        points: instance.value?.points ?? 0,
+      });
     }),
   );
+
+  const items: ReviewItem[] = [];
+  for (const item of resolved) {
+    if (!item.ok) return item;
+    items.push(item.value);
+  }
   return ok(items);
 }
 
@@ -81,7 +94,11 @@ export async function decide(
   const gate = requireParent(ctx);
   if (!gate.ok) return gate;
 
-  const submission = await ports.submissions.get(ctx.familyId, input.submissionId);
+  const submissionR = await persistOp(() =>
+    ports.submissions.get(ctx.familyId, input.submissionId),
+  );
+  if (!submissionR.ok) return submissionR;
+  const submission = submissionR.value;
   if (!submission) {
     return err({
       code: "not_found",
@@ -99,10 +116,11 @@ export async function decide(
     });
   }
 
-  const instance = await ports.chores.getInstance(
-    ctx.familyId,
-    submission.instanceId,
+  const instanceR = await persistOp(() =>
+    ports.chores.getInstance(ctx.familyId, submission.instanceId),
   );
+  if (!instanceR.ok) return instanceR;
+  const instance = instanceR.value;
   if (!instance) {
     return err({
       code: "not_found",
@@ -113,35 +131,29 @@ export async function decide(
 
   const decidedAt = ports.clock.now();
 
-  // `recordDecision` is the commit point: it runs *before* the points credit, so
-  // a partial failure can never credit a still-pending submission, and the
-  // ledger's `submissionId` idempotency bounds double-credit on any replay. Full
-  // atomicity across these writes lands with the transactional Supabase adapter
-  // (follow-up #112).
-  await ports.submissions.recordDecision(ctx.familyId, submission.id, {
-    status,
-    decidedBy: ctx.actor.memberId,
-    decidedAt,
-  });
-  await ports.chores.setInstanceStatus(
-    ctx.familyId,
-    instance.id,
-    approve ? "approved" : "todo", // reject recycles the instance to todo (§7.1)
-  );
-  if (approve) {
-    await ports.points.append({
-      familyId: ctx.familyId,
-      memberId: instance.assignedMemberId,
+  // One atomic op (a transaction on the real adapter, #136) applies all three
+  // writes of the authoritative path together: record the decision on the
+  // submission, advance the instance (`approved`, or `todo` to recycle on
+  // reject, §7.1), and — on approve — credit the instance's points to its
+  // assignee. A partial failure can no longer leave a submission `approved` with
+  // no points credited; the credit stays idempotent on `submissionId`.
+  const advanced = await persistOp(() =>
+    ports.submissions.recordDecisionAndAdvance(ctx.familyId, {
       submissionId: submission.id,
-      delta: instance.points,
-      reason: "chore_approved",
-      createdAt: decidedAt,
-    });
-  }
+      instanceId: instance.id,
+      status,
+      decidedBy: ctx.actor.memberId,
+      decidedAt,
+    }),
+  );
+  if (!advanced.ok) return advanced;
 
-  const updated = await ports.submissions.get(ctx.familyId, submission.id);
-  if (!updated) {
+  const updatedR = await persistOp(() =>
+    ports.submissions.get(ctx.familyId, submission.id),
+  );
+  if (!updatedR.ok) return updatedR;
+  if (!updatedR.value) {
     return err({ code: "not_found", entity: "submission", id: submission.id });
   }
-  return ok(updated);
+  return ok(updatedR.value);
 }

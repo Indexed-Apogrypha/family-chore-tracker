@@ -119,6 +119,77 @@ export function runSubmissionRepositoryContract(
       expect(got?.decidedAt).toBe(decidedAt);
     });
 
+    it("recordDecisionAndAdvance approves: submission + instance + points credit move together (#136)", async () => {
+      const { h, family, parent, kid, instance } = await setup();
+      const id = submissionId(crypto.randomUUID());
+      await h.submissions.create(input(family, instance, kid, id));
+      await h.submissions.recordVerdictAndAdvance(family, id, instance.id, VERDICT);
+      const decidedAt = "2026-06-21T10:00:00.000Z";
+
+      await h.submissions.recordDecisionAndAdvance(family, {
+        submissionId: id,
+        instanceId: instance.id,
+        status: "approved",
+        decidedBy: parent,
+        decidedAt,
+      });
+
+      const got = await h.submissions.get(family, id);
+      expect(got?.status).toBe("approved");
+      expect(got?.decidedBy).toBe(parent);
+      expect(got?.decidedAt).toBe(decidedAt);
+      // The instance advanced in the same op…
+      expect((await h.chores.getInstance(family, instance.id))?.status).toBe(
+        "approved",
+      );
+      // …and the kid was credited the instance's snapshotted points, once.
+      expect(await h.points.totalFor(family, kid)).toBe(instance.points);
+    });
+
+    it("recordDecisionAndAdvance approve is idempotent on submissionId — replay never double-credits (#136)", async () => {
+      const { h, family, parent, kid, instance } = await setup();
+      const id = submissionId(crypto.randomUUID());
+      await h.submissions.create(input(family, instance, kid, id));
+      const decidedAt = "2026-06-21T10:00:00.000Z";
+      const decide = () =>
+        h.submissions.recordDecisionAndAdvance(family, {
+          submissionId: id,
+          instanceId: instance.id,
+          status: "approved",
+          decidedBy: parent,
+          decidedAt,
+        });
+
+      await decide();
+      await decide();
+
+      expect(await h.points.totalFor(family, kid)).toBe(instance.points);
+    });
+
+    it("recordDecisionAndAdvance rejects: instance recycles to todo, no points credited (#136)", async () => {
+      const { h, family, parent, kid, instance } = await setup();
+      const id = submissionId(crypto.randomUUID());
+      await h.submissions.create(input(family, instance, kid, id));
+      const decidedAt = "2026-06-21T10:00:00.000Z";
+
+      await h.submissions.recordDecisionAndAdvance(family, {
+        submissionId: id,
+        instanceId: instance.id,
+        status: "rejected",
+        decidedBy: parent,
+        decidedAt,
+      });
+
+      const got = await h.submissions.get(family, id);
+      expect(got?.status).toBe("rejected");
+      // Rejection recycles the instance to todo for a fresh attempt (§7.1)…
+      expect((await h.chores.getInstance(family, instance.id))?.status).toBe(
+        "todo",
+      );
+      // …and no points are credited.
+      expect(await h.points.totalFor(family, kid)).toBe(0);
+    });
+
     it("scopes by family: another family's submission resolves to null (§9)", async () => {
       const { h, family, kid, instance } = await setup();
       const id = submissionId(crypto.randomUUID());

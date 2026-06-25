@@ -28,7 +28,7 @@ export function inMemoryPorts(now: string = DEFAULT_NOW): Ports {
     chores: inMemoryChoreRepository(store),
     submissions: inMemorySubmissionRepository(store),
     members: inMemoryMemberRepository(),
-    points: inMemoryPointsLedger(),
+    points: inMemoryPointsLedger(store),
   };
 }
 

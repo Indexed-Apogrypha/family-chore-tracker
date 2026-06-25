@@ -9,8 +9,9 @@ import {
   submissionId,
 } from "@/domain/shared/ids";
 import type { Submission } from "@/domain/submission/types";
-import type { Verdict } from "@/ports/judge";
 import type { SubmissionRepository } from "@/ports/repositories";
+
+import { parseStoredVerdict } from "./parse";
 
 type SubmissionRow = Database["public"]["Tables"]["submissions"]["Row"];
 
@@ -23,7 +24,7 @@ function toSubmission(row: SubmissionRow): Submission {
     photoPath: row.photo_path,
     status: row.status as SubmissionStatus,
     ...(row.ai_verdict !== null
-      ? { aiVerdict: row.ai_verdict as unknown as Verdict }
+      ? { aiVerdict: parseStoredVerdict(row.ai_verdict) }
       : {}),
     ...(row.decided_by !== null ? { decidedBy: memberId(row.decided_by) } : {}),
     // Postgres `timestamptz` reads back as e.g. `…+00:00`; canonicalize to the
@@ -112,6 +113,22 @@ export function supabaseSubmissionRepository(
         })
         .eq("id", id)
         .eq("family_id", family);
+      if (error) throw error;
+    },
+
+    async recordDecisionAndAdvance(family, input) {
+      // One transaction (the SECURITY DEFINER RPC) records the decision, advances
+      // the instance, AND credits points together, so an infra fault can't
+      // half-commit — e.g. approve the submission while crediting no points
+      // (§7.1, #136). The ledger insert is idempotent on submission_id.
+      const { error } = await client.rpc("record_decision_and_advance", {
+        p_family_id: family,
+        p_submission_id: input.submissionId,
+        p_instance_id: input.instanceId,
+        p_status: input.status,
+        p_decided_by: input.decidedBy,
+        p_decided_at: input.decidedAt,
+      });
       if (error) throw error;
     },
 

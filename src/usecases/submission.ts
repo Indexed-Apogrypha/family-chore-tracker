@@ -9,6 +9,7 @@ import type { RequestContext } from "@/ports/context";
 import type { Verdict } from "@/ports/judge";
 
 import { requireOwnerOrParent } from "./authz";
+import { persistOp, storeOp } from "./infra";
 
 export interface SubmitPhotoInput {
   instanceId: InstanceId;
@@ -209,30 +210,4 @@ async function advanceToPendingReview(
     return err({ code: "not_found", entity: "submission", id });
   }
   return ok(submissionR.value);
-}
-
-/**
- * Run a photo-storage op, mapping a thrown infra fault to the closed
- * `storage_unavailable` value (§8.2) — the photo isn't durable, so the caller
- * can retry rather than seeing a 500.
- */
-async function storeOp<T>(op: () => Promise<T>): Promise<Result<T>> {
-  try {
-    return ok(await op());
-  } catch {
-    return err({ code: "storage_unavailable" });
-  }
-}
-
-/**
- * Run a persistence op, mapping a thrown infra fault to `persistence_unavailable`
- * (§8.2). Reads and writes alike — a DB fault becomes a value the UI can handle,
- * not a 500.
- */
-async function persistOp<T>(op: () => Promise<T>): Promise<Result<T>> {
-  try {
-    return ok(await op());
-  } catch {
-    return err({ code: "persistence_unavailable" });
-  }
 }

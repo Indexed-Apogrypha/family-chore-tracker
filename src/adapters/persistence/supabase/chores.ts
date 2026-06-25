@@ -2,9 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/composition/database.types";
 import type { ChoreInstance, ChoreTemplate } from "@/domain/chore/types";
-import type { InstanceStatus, Recurrence } from "@/domain/shared/enums";
+import type { InstanceStatus } from "@/domain/shared/enums";
 import { familyId, instanceId, memberId, templateId } from "@/domain/shared/ids";
 import type { ChoreRepository } from "@/ports/repositories";
+
+import { parseStoredRecurrence } from "./parse";
 
 type TemplateRow = Database["public"]["Tables"]["chore_templates"]["Row"];
 type InstanceRow = Database["public"]["Tables"]["chore_instances"]["Row"];
@@ -19,7 +21,7 @@ function toTemplate(row: TemplateRow): ChoreTemplate {
     title: row.title,
     ...(row.description !== null ? { description: row.description } : {}),
     points: row.points,
-    recurrence: row.recurrence as unknown as Recurrence,
+    recurrence: parseStoredRecurrence(row.recurrence),
     assignedMemberId: memberId(row.assigned_member_id),
     active: row.active,
   };

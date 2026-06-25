@@ -6,6 +6,7 @@ import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 
 import { requireParent } from "./authz";
+import { persistOp } from "./infra";
 import { requireName, requirePin } from "./validation";
 
 export interface AddKidInput {
@@ -35,12 +36,15 @@ export async function addKid(
   const pin = requirePin(input.pin);
   if (!pin.ok) return pin;
 
-  const kid = await ports.members.addKid({
-    familyId: ctx.familyId,
-    displayName: displayName.value,
-    pin: pin.value,
-  });
-  return ok(kid);
+  const kid = await persistOp(() =>
+    ports.members.addKid({
+      familyId: ctx.familyId,
+      displayName: displayName.value,
+      pin: pin.value,
+    }),
+  );
+  if (!kid.ok) return kid;
+  return ok(kid.value);
 }
 
 /**
@@ -51,8 +55,9 @@ export async function listMembers(
   ports: Ports,
   ctx: RequestContext,
 ): Promise<Result<Member[]>> {
-  const members = await ports.members.listMembers(ctx.familyId);
-  return ok(members);
+  const members = await persistOp(() => ports.members.listMembers(ctx.familyId));
+  if (!members.ok) return members;
+  return ok(members.value);
 }
 
 /**
@@ -66,11 +71,10 @@ export async function verifyKidPin(
   ctx: RequestContext,
   input: VerifyKidPinInput,
 ): Promise<Result<Member>> {
-  const kid = await ports.members.verifyKidPin(
-    ctx.familyId,
-    input.memberId,
-    input.pin,
+  const kid = await persistOp(() =>
+    ports.members.verifyKidPin(ctx.familyId, input.memberId, input.pin),
   );
-  if (!kid) return err({ code: "bad_pin" });
-  return ok(kid);
+  if (!kid.ok) return kid;
+  if (!kid.value) return err({ code: "bad_pin" });
+  return ok(kid.value);
 }
