@@ -143,12 +143,33 @@ export interface SubmissionRepository {
   /**
    * Record a parent's **authoritative** decision (§7.1): set the terminal status
    * together with who decided and when. Approve/reject only — the points credit
-   * is the caller's separate, idempotent step.
+   * is the caller's separate, idempotent step. A primitive kept for the contract;
+   * the use-case path uses {@link recordDecisionAndAdvance}.
    */
   recordDecision(
     familyId: FamilyId,
     id: SubmissionId,
     decision: {
+      status: "approved" | "rejected";
+      decidedBy: MemberId;
+      decidedAt: IsoInstant;
+    },
+  ): Promise<void>;
+  /**
+   * Apply a parent's decision **atomically** across all three writes of the
+   * authoritative path (§7.1, #136): set the submission's terminal status +
+   * `decidedBy`/`decidedAt`, advance the instance (`approved`, or `todo` to
+   * recycle on reject), and — on approve — credit the instance's snapshotted
+   * points to its assignee. One transaction on the Supabase adapter (an RPC) so
+   * an infra fault can't half-commit (e.g. approve a submission while crediting
+   * no points). The credit is idempotent on `submissionId`, so a replay never
+   * double-credits. The in-memory adapter writes all maps in one synchronous step.
+   */
+  recordDecisionAndAdvance(
+    familyId: FamilyId,
+    input: {
+      submissionId: SubmissionId;
+      instanceId: InstanceId;
       status: "approved" | "rejected";
       decidedBy: MemberId;
       decidedAt: IsoInstant;

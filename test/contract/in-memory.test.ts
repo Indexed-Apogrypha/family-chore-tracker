@@ -30,7 +30,7 @@ function inMemoryHarness(): RepoHarness {
     members: inMemoryMemberRepository(),
     chores: inMemoryChoreRepository(store),
     submissions: inMemorySubmissionRepository(store),
-    points: inMemoryPointsLedger(),
+    points: inMemoryPointsLedger(store),
   };
 }
 

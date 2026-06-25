@@ -20,6 +20,7 @@ export function inMemorySubmissionRepository(
 ): SubmissionRepository {
   const submissions = store.submissions;
   const instances = store.instances;
+  const ledger = store.ledger;
 
   const scoped = (family: FamilyId, id: SubmissionId): Submission | null => {
     const submission = submissions.get(id);
@@ -90,6 +91,46 @@ export function inMemorySubmissionRepository(
           decidedBy: decision.decidedBy,
           decidedAt: decision.decidedAt,
         });
+      }
+    },
+
+    async recordDecisionAndAdvance(family, input) {
+      // All three writes happen synchronously (no interleaving await), so the
+      // submission, its instance, and the points credit can never observe a
+      // half-committed decision — the in-memory mirror of the Supabase RPC's
+      // single transaction (§7.1, #136).
+      const submission = scoped(family, input.submissionId);
+      if (submission) {
+        submissions.set(input.submissionId, {
+          ...submission,
+          status: input.status,
+          decidedBy: input.decidedBy,
+          decidedAt: input.decidedAt,
+        });
+      }
+      const instance = instances.get(input.instanceId);
+      if (instance && instance.familyId === family) {
+        // Reject recycles the instance to `todo`; approve marks it `approved`
+        // (chore_instances has no `rejected` state, §7.1).
+        instances.set(input.instanceId, {
+          ...instance,
+          status: input.status === "approved" ? "approved" : "todo",
+        });
+        // Credit the kid exactly once on approve, derived from the instance
+        // snapshot — idempotent on submissionId, like the ledger's own append.
+        if (
+          input.status === "approved" &&
+          !ledger.has(input.submissionId)
+        ) {
+          ledger.set(input.submissionId, {
+            familyId: family,
+            memberId: instance.assignedMemberId,
+            submissionId: input.submissionId,
+            delta: instance.points,
+            reason: "chore_approved",
+            createdAt: input.decidedAt,
+          });
+        }
       }
     },
 

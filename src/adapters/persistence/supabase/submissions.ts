@@ -116,6 +116,22 @@ export function supabaseSubmissionRepository(
       if (error) throw error;
     },
 
+    async recordDecisionAndAdvance(family, input) {
+      // One transaction (the SECURITY DEFINER RPC) records the decision, advances
+      // the instance, AND credits points together, so an infra fault can't
+      // half-commit — e.g. approve the submission while crediting no points
+      // (§7.1, #136). The ledger insert is idempotent on submission_id.
+      const { error } = await client.rpc("record_decision_and_advance", {
+        p_family_id: family,
+        p_submission_id: input.submissionId,
+        p_instance_id: input.instanceId,
+        p_status: input.status,
+        p_decided_by: input.decidedBy,
+        p_decided_at: input.decidedAt,
+      });
+      if (error) throw error;
+    },
+
     async listByStatus(family, status) {
       const { data, error } = await client
         .from("submissions")

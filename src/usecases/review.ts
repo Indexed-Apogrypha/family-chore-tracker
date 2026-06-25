@@ -113,31 +113,19 @@ export async function decide(
 
   const decidedAt = ports.clock.now();
 
-  // `recordDecision` is the commit point: it runs *before* the points credit, so
-  // a partial failure can never credit a still-pending submission, and the
-  // ledger's `submissionId` idempotency bounds double-credit on any replay. Full
-  // atomicity across these writes lands with the transactional Supabase adapter
-  // (follow-up #112).
-  await ports.submissions.recordDecision(ctx.familyId, submission.id, {
+  // One atomic op (a transaction on the real adapter, #136) applies all three
+  // writes of the authoritative path together: record the decision on the
+  // submission, advance the instance (`approved`, or `todo` to recycle on
+  // reject, §7.1), and — on approve — credit the instance's points to its
+  // assignee. A partial failure can no longer leave a submission `approved` with
+  // no points credited; the credit stays idempotent on `submissionId`.
+  await ports.submissions.recordDecisionAndAdvance(ctx.familyId, {
+    submissionId: submission.id,
+    instanceId: instance.id,
     status,
     decidedBy: ctx.actor.memberId,
     decidedAt,
   });
-  await ports.chores.setInstanceStatus(
-    ctx.familyId,
-    instance.id,
-    approve ? "approved" : "todo", // reject recycles the instance to todo (§7.1)
-  );
-  if (approve) {
-    await ports.points.append({
-      familyId: ctx.familyId,
-      memberId: instance.assignedMemberId,
-      submissionId: submission.id,
-      delta: instance.points,
-      reason: "chore_approved",
-      createdAt: decidedAt,
-    });
-  }
 
   const updated = await ports.submissions.get(ctx.familyId, submission.id);
   if (!updated) {
