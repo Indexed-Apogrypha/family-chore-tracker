@@ -27,7 +27,9 @@ backend, set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and
 (`0001_init.sql`, `0002_accounts.sql`, `0003_auth.sql`, `0004_storage_rls.sql`), and
 create a **private** Storage bucket of that name. The two backends sit behind
 identical ports, so only the composition root (`lib/server/container.ts`) is aware of
-which one is active.
+which one is active. The live service-role path (Postgres + Storage) is verified
+end-to-end by `npm run smoke:supabase` (`scripts/supabase-smoke.ts`), which drives the
+real adapters against a configured project.
 
 **Accounts & Auth.** Set `SUPABASE_ANON_KEY` as well to turn on real Supabase Auth
 + per-family row-level security. Login becomes required: a parent signs up (which
