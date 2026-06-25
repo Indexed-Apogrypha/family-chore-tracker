@@ -17,8 +17,11 @@ The app runs in two configurations, **proven equivalent by contract tests**:
 - **Real mode** — Supabase (Postgres/Auth/Storage) + a real vision provider,
   switched on by the presence of env keys.
 
-**Status:** rebuilt from scratch after a repo reset. **M0 (scaffold & seams) is
-complete**; the in-progress milestone is **M1 — Accounts & profiles**.
+**Status:** **v1 feature-complete** — all milestones **M0–M7** shipped (2026-06-23); the
+production deploy is gated on manual approval. New here? See the
+[developer + user wiki](docs/wiki/README.md) and the
+[v1 retrospective](docs/reports/2026-06-23-retrospective-m0-m7.md). Post-v1 work is tracked
+as tech debt (#134–#140).
 
 > **Source of truth:** the architecture & design spec at
 > [`docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md`](docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md).
@@ -65,12 +68,12 @@ test/{contract,usecases,architecture,domain,adapters,composition}/
 
 `judge` · `repositories` · `photo-storage` · `clock`. Each is one interface
 **designed for ≥2 adapters**, selected at the composition root. M0 ships the
-keyless/fake side — the **executable spec**; the real adapters land with their
-feature (storage → M3, judge → M4, persistence → M1/M6), so today only `clock`
-has two live adapters and the rest pair the fake side with a stub that throws
-until then. A **contract suite per seam** (the `repositories` seam has one per
-repository) proves the two sides interchangeable; it runs the in-memory side
-today, and the Supabase adapters join the *same* suites in M3/M6.
+keyless/fake side — the **executable spec**; the real adapters landed with their
+feature (persistence → M1/M6, storage → M3, judge → M4), so **all four seams now
+have a real adapter** alongside the fake/in-memory side. A **contract suite per
+seam** (the `repositories` seam has one per repository) proves the two sides
+interchangeable; the in-memory side runs in CI and the Supabase adapters run
+through the *same* suites via `npm run test:supabase`.
 
 - Adapters are **factory functions**.
 - In-memory repos are **family-scoped**: every method takes `familyId`, and

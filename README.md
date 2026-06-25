@@ -83,6 +83,17 @@ parent approval, and an append-only points ledger. The full design is in
 `CLAUDE.md` summarizes the dependency rule and conventions. *Deferred:* a
 service-worker offline shell (the PWA manifest + installability ship in v1).
 
+## Documentation
+
+A full **[developer + user wiki](docs/wiki/README.md)** documents the system in depth:
+[architecture](docs/wiki/architecture.md) · [data model & state machine](docs/wiki/data-model.md) ·
+[API reference](docs/wiki/api-reference.md) · [testing](docs/wiki/testing-guide.md) ·
+[configuration](docs/wiki/configuration.md) · [deployment](docs/wiki/deployment.md) ·
+[user guide](docs/wiki/user-guide.md) · [glossary](docs/wiki/glossary.md). Start at the
+**[wiki home](docs/wiki/README.md)**. The authoritative design remains the
+[spec](docs/superpowers/specs/2026-06-21-family-chore-tracker-design.md); release history is in the
+[CHANGELOG](CHANGELOG.md).
+
 ## Development workflow
 
 Every change goes through a branch → pull request → required checks
