@@ -4,6 +4,7 @@ import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 
+import { persistOp } from "./infra";
 import { requireFamilyMember } from "./resolve";
 
 export interface PointsTotalInput {
@@ -23,5 +24,9 @@ export async function pointsTotal(
 ): Promise<Result<number>> {
   const member = await requireFamilyMember(ports, ctx, input.memberId);
   if (!member.ok) return member;
-  return ok(await ports.points.totalFor(ctx.familyId, input.memberId));
+  const total = await persistOp(() =>
+    ports.points.totalFor(ctx.familyId, input.memberId),
+  );
+  if (!total.ok) return total;
+  return ok(total.value);
 }

@@ -5,6 +5,7 @@ import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 
+import { persistOp } from "./infra";
 import { requireFamilyMember } from "./resolve";
 
 export interface SwitchProfileInput {
@@ -31,11 +32,10 @@ export async function switchProfile(
   if (!memberR.ok) return memberR;
   if (memberR.value.kind === "parent") return ok(memberR.value);
 
-  const kid = await ports.members.verifyKidPin(
-    ctx.familyId,
-    input.memberId,
-    input.pin ?? "",
+  const kid = await persistOp(() =>
+    ports.members.verifyKidPin(ctx.familyId, input.memberId, input.pin ?? ""),
   );
-  if (!kid) return err({ code: "bad_pin" });
-  return ok(kid);
+  if (!kid.ok) return kid;
+  if (!kid.value) return err({ code: "bad_pin" });
+  return ok(kid.value);
 }

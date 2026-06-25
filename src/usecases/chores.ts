@@ -9,6 +9,7 @@ import type { IsoDate } from "@/ports/clock";
 import type { RequestContext } from "@/ports/context";
 
 import { requireParent } from "./authz";
+import { persistOp } from "./infra";
 import { requireFamilyMember } from "./resolve";
 import {
   optionalDescription,
@@ -54,16 +55,19 @@ export async function createTemplate(
   const assignee = await requireFamilyMember(ports, ctx, input.assignedMemberId);
   if (!assignee.ok) return assignee;
 
-  const template = await ports.chores.createTemplate({
-    familyId: ctx.familyId,
-    title: title.value,
-    description: description.value,
-    points: points.value,
-    recurrence: recurrence.value,
-    assignedMemberId: input.assignedMemberId,
-    active: true,
-  });
-  return ok(template);
+  const template = await persistOp(() =>
+    ports.chores.createTemplate({
+      familyId: ctx.familyId,
+      title: title.value,
+      description: description.value,
+      points: points.value,
+      recurrence: recurrence.value,
+      assignedMemberId: input.assignedMemberId,
+      active: true,
+    }),
+  );
+  if (!template.ok) return template;
+  return ok(template.value);
 }
 
 export interface CreateOneOffInput {
@@ -99,14 +103,17 @@ export async function createOneOff(
   const assignee = await requireFamilyMember(ports, ctx, input.assignedMemberId);
   if (!assignee.ok) return assignee;
 
-  const instance = await ports.chores.createOneOff({
-    familyId: ctx.familyId,
-    title: title.value,
-    points: points.value,
-    assignedMemberId: input.assignedMemberId,
-    dueDate: dueDate.value,
-  });
-  return ok(instance);
+  const instance = await persistOp(() =>
+    ports.chores.createOneOff({
+      familyId: ctx.familyId,
+      title: title.value,
+      points: points.value,
+      assignedMemberId: input.assignedMemberId,
+      dueDate: dueDate.value,
+    }),
+  );
+  if (!instance.ok) return instance;
+  return ok(instance.value);
 }
 
 export interface GetTodayBoardInput {
@@ -137,33 +144,42 @@ export async function getTodayBoard(
 
   const date = input.date ?? ports.clock.today();
 
-  const templates = await ports.chores.listTemplates(ctx.familyId);
-  for (const template of templates) {
+  const templates = await persistOp(() =>
+    ports.chores.listTemplates(ctx.familyId),
+  );
+  if (!templates.ok) return templates;
+  for (const template of templates.value) {
     if (
       template.active &&
       template.assignedMemberId === input.memberId &&
       isDue(template, date)
     ) {
-      await ports.chores.upsertGeneratedInstance({
-        familyId: ctx.familyId,
-        templateId: template.id,
-        title: template.title, // snapshot at materialization
-        // snapshot the description too (when set) so the judge can use it (#115)
-        ...(template.description !== undefined
-          ? { description: template.description }
-          : {}),
-        points: template.points, // snapshot at materialization
-        assignedMemberId: input.memberId,
-        dueDate: date,
-      });
+      const generated = await persistOp(() =>
+        ports.chores.upsertGeneratedInstance({
+          familyId: ctx.familyId,
+          templateId: template.id,
+          title: template.title, // snapshot at materialization
+          // snapshot the description too (when set) so the judge can use it (#115)
+          ...(template.description !== undefined
+            ? { description: template.description }
+            : {}),
+          points: template.points, // snapshot at materialization
+          assignedMemberId: input.memberId,
+          dueDate: date,
+        }),
+      );
+      if (!generated.ok) return generated;
     }
   }
 
-  const board = await ports.chores.listInstances(ctx.familyId, {
-    assignedMemberId: input.memberId,
-    dueDate: date,
-  });
-  return ok(board);
+  const board = await persistOp(() =>
+    ports.chores.listInstances(ctx.familyId, {
+      assignedMemberId: input.memberId,
+      dueDate: date,
+    }),
+  );
+  if (!board.ok) return board;
+  return ok(board.value);
 }
 
 /**
@@ -177,8 +193,11 @@ export async function listTemplates(
   const gate = requireParent(ctx);
   if (!gate.ok) return gate;
 
-  const templates = await ports.chores.listTemplates(ctx.familyId);
-  return ok(templates);
+  const templates = await persistOp(() =>
+    ports.chores.listTemplates(ctx.familyId),
+  );
+  if (!templates.ok) return templates;
+  return ok(templates.value);
 }
 
 export interface SetTemplateActiveInput {
@@ -199,13 +218,12 @@ export async function setTemplateActive(
   const gate = requireParent(ctx);
   if (!gate.ok) return gate;
 
-  const updated = await ports.chores.setTemplateActive(
-    ctx.familyId,
-    input.templateId,
-    input.active,
+  const updated = await persistOp(() =>
+    ports.chores.setTemplateActive(ctx.familyId, input.templateId, input.active),
   );
-  if (!updated) {
+  if (!updated.ok) return updated;
+  if (!updated.value) {
     return err({ code: "not_found", entity: "template", id: input.templateId });
   }
-  return ok(updated);
+  return ok(updated.value);
 }

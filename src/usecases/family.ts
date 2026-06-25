@@ -3,6 +3,7 @@ import { ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 
+import { persistOp } from "./infra";
 import { requireName } from "./validation";
 
 export interface CreateFamilyInput {
@@ -36,10 +37,13 @@ export async function createFamily(
   );
   if (!founderDisplayName.ok) return founderDisplayName;
 
-  const created = await ports.members.createFamily({
-    name: name.value,
-    founderDisplayName: founderDisplayName.value,
-    authUserId: input.authUserId,
-  });
-  return ok(created);
+  const created = await persistOp(() =>
+    ports.members.createFamily({
+      name: name.value,
+      founderDisplayName: founderDisplayName.value,
+      authUserId: input.authUserId,
+    }),
+  );
+  if (!created.ok) return created;
+  return ok(created.value);
 }
