@@ -183,8 +183,34 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      # Capture the deployment currently serving production BEFORE we promote the
+      # new one, so the post-promote check can restore it on failure. Best-effort:
+      # if it can't be resolved, auto-rollback is unavailable and step 5 falls
+      # back to the manual instructions (no worse than before). The stable
+      # aliases are filtered out so we keep the unique deployment URL, which is
+      # what `vercel promote` accepts as a rollback target.
+      - name: Capture current production deployment (rollback target)
+        id: prev
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          prev="$(vercel inspect family-chore-tracker-psi.vercel.app \
+            --scope matthew-harpers-projects --token="$VERCEL_TOKEN" 2>&1 \
+            | grep -Eo 'https://[a-z0-9-]+\.vercel\.app' \
+            | grep -Ev 'family-chore-tracker-(psi|staging)\.vercel\.app' \
+            | head -n1 || true)"
+          if [ -n "$prev" ]; then
+            echo "Current production deployment (rollback target): $prev"
+          else
+            echo "::warning::Could not resolve the current production deployment — auto-rollback will be unavailable."
+          fi
+          echo "url=$prev" >> "$GITHUB_OUTPUT"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
       # Production graduation — every wait is bounded so the job can never hang,
       # and the build is proven healthy at RUNTIME before the domain flips:
+      #   0) capture prev        → record the deployment currently serving prod,
+      #                            so step 5 can auto-roll-back to it if needed.
       #   1) deploy --no-wait    → returns immediately with the deployment URL
       #                            (the inline --prod wait HANGS on this project:
       #                             READY but never returns, observed 25min+).
@@ -193,7 +219,9 @@ jobs:
       #                            fails HERE, before the domain flips, so prod
       #                            keeps serving the last-good build.
       #   4) promote             → flip the production domain (~1s).
-      #   5) confirm (post)      → assert the production domain itself is 200.
+      #   5) confirm (post)      → assert the production domain itself is 200; if
+      #                            not, auto-roll-back to the step-0 deployment so
+      #                            prod is restored, then fail the job.
       # NB: promote/inspect resolve a deployment by URL and do NOT inherit the team
       # from VERCEL_ORG_ID, so they need an explicit --scope <team-slug> — without
       # it promote fails "Deployment belongs to a different team" (run 28024463409).
@@ -217,12 +245,20 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
+      # The production deployment's unique *.vercel.app URL sits behind Vercel
+      # Deployment Protection too (anon -> 401) whenever protection covers "all
+      # deployments", so authenticate this probe with the Protection-Bypass
+      # secret exactly like the staging smoke does. Without it, a protected
+      # deployment URL 401s here and blocks EVERY production promotion.
       - name: Smoke-check the production build (pre-promote)
         if: steps.guard.outputs.ready == 'true'
+        env:
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           url="${{ steps.deploy.outputs.url }}"
-          code="$(curl -sSL -o /dev/null -w '%{http_code}' "$url/")"
-          echo "GET $url/ -> $code"
+          code="$(curl -H "x-vercel-protection-bypass: $BYPASS" -sSL --max-time 30 \
+            -o /dev/null -w '%{http_code}' "$url/")"
+          echo "GET $url/ (bypass) -> $code"
           if [ "$code" != "200" ]; then
             echo "::error::Pre-promote smoke failed: expected 200, got $code — NOT promoting."
             exit 1
@@ -236,16 +272,43 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
 
-      - name: Confirm the production domain is 200 (post-promote)
+      # The domain has already flipped, so a failure here means prod is serving a
+      # bad build. Auto-roll-back by re-promoting the step-0 deployment, then fail
+      # the job so the bad release is visible (red) and not silently "deployed".
+      - name: Confirm the production domain is 200 (post-promote; auto-rollback on failure)
         if: steps.guard.outputs.ready == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          PREV_URL: ${{ steps.prev.outputs.url }}
         run: |
-          code="$(curl -sSL -o /dev/null -w '%{http_code}' \
+          code="$(curl -sSL --max-time 30 -o /dev/null -w '%{http_code}' \
             https://family-chore-tracker-psi.vercel.app/)"
           echo "GET https://family-chore-tracker-psi.vercel.app/ -> $code"
-          if [ "$code" != "200" ]; then
-            echo "::error::Post-promote check failed: prod domain returned $code. Roll back: vercel rollback <prev> --token=…"
+          if [ "$code" = "200" ]; then
+            exit 0
+          fi
+
+          echo "::error::Post-promote check failed: prod domain returned $code."
+          if [ -z "${PREV_URL:-}" ]; then
+            echo "::error::No rollback target was captured. Manually roll back: vercel rollback <previous-deployment> --scope matthew-harpers-projects --token=…"
             exit 1
           fi
+
+          echo "Rolling production back to the last-good deployment: $PREV_URL"
+          if vercel promote "$PREV_URL" --yes \
+               --scope matthew-harpers-projects --token="$VERCEL_TOKEN"; then
+            rb="$(curl -sSL --max-time 30 -o /dev/null -w '%{http_code}' \
+              https://family-chore-tracker-psi.vercel.app/)"
+            echo "Post-rollback GET https://family-chore-tracker-psi.vercel.app/ -> $rb"
+            if [ "$rb" = "200" ]; then
+              echo "::error::Production was rolled back to $PREV_URL (now 200). Failing the job: the new build did not pass its smoke check."
+            else
+              echo "::error::Rolled back to $PREV_URL but prod still returns $rb — MANUAL INTERVENTION REQUIRED."
+            fi
+          else
+            echo "::error::AUTOMATIC ROLLBACK FAILED. Manually roll back: vercel rollback $PREV_URL --scope matthew-harpers-projects --token=…"
+          fi
+          exit 1
 
       - name: Summary
         if: steps.guard.outputs.ready == 'true'

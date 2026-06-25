@@ -16,7 +16,9 @@ concurrency:
 # Each app job (lint/typecheck/test/build) reports a status check whose name is
 # EXACTLY the context required by the `protect-main` ruleset. They must always
 # run and conclude (no job-level skips), or a required check would hang on
-# "Expected". The no-op-pass runner keeps them green until the app exists.
+# "Expected". The runner (.github/scripts/run-script.sh) fails CLOSED: a missing
+# package.json or a missing npm script errors the check rather than passing, so
+# the gate can't be silently disabled by editing package.json.
 jobs:
   lint:
     name: lint

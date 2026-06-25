@@ -1,26 +1,28 @@
 #!/usr/bin/env bash
-# Run an npm script ONLY if it exists; otherwise no-op-pass (exit 0).
+# Run a required npm script, FAIL-CLOSED if it is missing.
 #
-# Why: the application code does not exist yet (the repo was reset), and the
-# intended package.json has no `lint` script. Making the required CI checks
-# tolerant of a missing package.json / missing script keeps the pipeline green
-# from day one, and the real checks switch on automatically once the app and
-# its scripts land. A required status check that is always reported (never
-# skipped) is also what keeps a PR from getting stuck on "Expected" forever.
+# History: when the repo was reset this shim no-op-passed a missing
+# package.json / script so the required checks stayed green before the app
+# existed. The app now exists (package.json + lockfile are committed with real
+# lint/typecheck/test/build scripts), so that tolerance has become a liability:
+# a PR that deletes package.json or renames one of these scripts would make the
+# required check report GREEN while running nothing — silently disabling the
+# gate. We therefore fail closed: a missing package.json or a missing script is
+# an ERROR, not a pass.
 set -euo pipefail
 
 script="${1:?usage: run-script.sh <npm-script-name>}"
 
 if [ ! -f package.json ]; then
-  echo "::notice::no package.json yet — skipping '${script}' (no-op pass)"
-  exit 0
+  echo "::error::package.json not found — required check '${script}' cannot run (fail-closed)."
+  exit 1
 fi
 
 # Is the script defined in package.json? (node is on PATH via setup-node)
 has_script="$(node -e "const s=(require('./package.json').scripts)||{};process.stdout.write(s['${script}']?'1':'')" 2>/dev/null || true)"
 if [ -z "${has_script}" ]; then
-  echo "::notice::no '${script}' script in package.json — skipping (no-op pass)"
-  exit 0
+  echo "::error::no '${script}' script in package.json — a required CI check must not be silently disabled (fail-closed)."
+  exit 1
 fi
 
 echo "Running '${script}'…"
