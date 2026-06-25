@@ -9,8 +9,9 @@ import {
   submissionId,
 } from "@/domain/shared/ids";
 import type { Submission } from "@/domain/submission/types";
-import type { Verdict } from "@/ports/judge";
 import type { SubmissionRepository } from "@/ports/repositories";
+
+import { parseStoredVerdict } from "./parse";
 
 type SubmissionRow = Database["public"]["Tables"]["submissions"]["Row"];
 
@@ -23,7 +24,7 @@ function toSubmission(row: SubmissionRow): Submission {
     photoPath: row.photo_path,
     status: row.status as SubmissionStatus,
     ...(row.ai_verdict !== null
-      ? { aiVerdict: row.ai_verdict as unknown as Verdict }
+      ? { aiVerdict: parseStoredVerdict(row.ai_verdict) }
       : {}),
     ...(row.decided_by !== null ? { decidedBy: memberId(row.decided_by) } : {}),
     // Postgres `timestamptz` reads back as e.g. `…+00:00`; canonicalize to the
