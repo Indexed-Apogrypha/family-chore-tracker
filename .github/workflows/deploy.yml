@@ -139,9 +139,112 @@ jobs:
             echo "Approve the **production** job below to graduate this exact commit to prod."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Schema gate (#138): before the gated production deploy, verify the prod
+  # database's schema MATCHES the committed migrations under supabase/migrations/.
+  # `production` `needs:` this job, so divergence (a migration committed but not
+  # applied, or the live schema drifted out from under the repo) FAILS here and
+  # the gated prod graduation never runs — a code deploy can't race ahead of an
+  # unapplied schema change.
+  #
+  # Guard pattern mirrors the deploy jobs: if the Supabase secrets are absent the
+  # job is GREEN (skipped, not failed), so the pipeline is safe to merge before
+  # the migration secrets are configured. Uses repository secrets only; no values
+  # are invented here.
+  migrations:
+    name: Apply migrations / check schema drift
+    needs: staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.sha }}
+
+      - name: Check migration preconditions
+        id: guard
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_PROJECT_REF:-}" ] || [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "Supabase migration secrets not all set — skipping schema gate (pipeline safe before config)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Preconditions met — running schema gate against the target project."
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # TODO(verify SHA): confirm this commit on github.com before relying on it.
+      # This is the commit for supabase/setup-cli v1.0.0 (tag-resolved).
+      - name: Install Supabase CLI
+        if: steps.guard.outputs.ready == 'true'
+        uses: supabase/setup-cli@2f5b6da6e6e88296b6e4f4a3f10f5ca1d5d0a51c # v1.0.0
+        with:
+          version: latest
+
+      - name: Link the target Supabase project
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}"
+
+      # Detect drift, THEN apply. `db push --dry-run` lists the committed
+      # migrations the remote has NOT applied; `migration list` shows the
+      # local/remote ledgers side by side for the log. Then `db push` applies any
+      # pending committed migrations so the schema matches the code we are about to
+      # deploy. Every command runs with `set -euo pipefail`, so a CLI error
+      # (auth/connection/SQL failure) fails the job and blocks the gated prod
+      # graduation that `needs:` this job.
+      - name: Show local vs remote migration ledgers
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          supabase migration list
+
+      - name: Apply committed migrations to the target DB (fail on error)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Preview the pending migrations for the run log…
+          supabase db push --dry-run
+          # …then apply them. If committed migrations cannot be applied (e.g. they
+          # conflict with the live schema), this exits non-zero and fails the job.
+          supabase db push --yes
+
+      # Belt-and-suspenders: after pushing, assert there is NO remaining schema
+      # drift between the committed migrations and the live schema. `db diff`
+      # prints the SQL needed to reconcile the linked DB to the local migrations;
+      # any non-empty output here means the live schema diverged in a way the
+      # migrations don't capture — FAIL so we never deploy code against a schema
+      # the repo doesn't describe.
+      - name: Fail on remaining schema drift
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          diff_out="$(supabase db diff --linked)"
+          printf '%s\n' "$diff_out"
+          if [ -n "$(printf '%s' "$diff_out" | tr -d '[:space:]')" ]; then
+            echo "::error::Schema drift detected: the linked database does not match the committed migrations in supabase/migrations/. Reconcile before deploying."
+            exit 1
+          fi
+          echo "No schema drift — committed migrations match the target schema."
+
   production:
     name: Graduate to production
-    needs: staging
+    needs: [staging, migrations]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production # required-reviewers gate — graduation waits here
