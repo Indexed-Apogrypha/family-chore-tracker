@@ -1,8 +1,8 @@
 import type { Family, Member } from "@/domain/family/types";
-import { ok } from "@/domain/shared/result";
 import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 
+import { persistOp } from "./infra";
 import { requireName } from "./validation";
 
 export interface CreateFamilyInput {
@@ -36,10 +36,11 @@ export async function createFamily(
   );
   if (!founderDisplayName.ok) return founderDisplayName;
 
-  const created = await ports.members.createFamily({
-    name: name.value,
-    founderDisplayName: founderDisplayName.value,
-    authUserId: input.authUserId,
-  });
-  return ok(created);
+  return persistOp(() =>
+    ports.members.createFamily({
+      name: name.value,
+      founderDisplayName: founderDisplayName.value,
+      authUserId: input.authUserId,
+    }),
+  );
 }

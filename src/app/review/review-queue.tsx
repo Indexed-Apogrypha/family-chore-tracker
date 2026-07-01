@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { errorMessage } from "@/app/error-copy";
+import { type ApiErrorBody, errorMessageFromBody } from "@/app/error-copy";
 
 export interface ReviewItemDto {
   submissionId: string;
@@ -30,6 +30,9 @@ export function ReviewQueue({ items }: { items: ReviewItemDto[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Signed photo URLs are short-lived — track the ones that have expired so
+  // the parent sees an explanation instead of a broken image.
+  const [expired, setExpired] = useState<Record<string, boolean>>({});
 
   async function review(submissionId: string, decision: "approve" | "reject") {
     setBusyId(submissionId);
@@ -39,10 +42,10 @@ export function ReviewQueue({ items }: { items: ReviewItemDto[] }) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ submissionId, decision }),
     });
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
     setBusyId(null);
     if (!res.ok) {
-      setError(errorMessage(data.error, REVIEW_ERRORS));
+      setError(errorMessageFromBody(data, REVIEW_ERRORS));
     }
     router.refresh();
   }
@@ -61,12 +64,21 @@ export function ReviewQueue({ items }: { items: ReviewItemDto[] }) {
       <ul className="review-list">
         {items.map((item) => (
           <li key={item.submissionId} className="review-card">
-            {/* eslint-disable-next-line @next/next/no-img-element -- signed URL, not a static asset */}
-            <img
-              className="review-photo"
-              src={item.photoUrl}
-              alt={`Photo for ${item.choreTitle}`}
-            />
+            {expired[item.submissionId] ? (
+              <div className="review-photo review-photo-expired">
+                <span className="hint">Photo link expired — refresh the page.</span>
+              </div>
+            ) : (
+              /* eslint-disable-next-line @next/next/no-img-element -- signed URL, not a static asset */
+              <img
+                className="review-photo"
+                src={item.photoUrl}
+                alt={`Photo for ${item.choreTitle}`}
+                onError={() =>
+                  setExpired((prev) => ({ ...prev, [item.submissionId]: true }))
+                }
+              />
+            )}
             <div className="review-body">
               <div className="review-head">
                 <span className="review-title">{item.choreTitle}</span>

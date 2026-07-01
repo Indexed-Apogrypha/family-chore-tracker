@@ -1,3 +1,4 @@
+import { unauthenticated } from "@/app/api/http";
 import { deriveContext } from "@/composition/request";
 import { serverPorts } from "@/composition/server";
 import { instanceId } from "@/domain/shared/ids";
@@ -23,9 +24,7 @@ const ALLOWED_TYPES = new Set([
  */
 export async function POST(request: Request): Promise<Response> {
   const ctx = await deriveContext();
-  if (!ctx) {
-    return Response.json({ error: "unauthenticated" }, { status: 401 });
-  }
+  if (!ctx) return unauthenticated();
 
   // Reject oversized uploads before buffering the body into memory.
   const declared = Number(request.headers.get("content-length") ?? 0);

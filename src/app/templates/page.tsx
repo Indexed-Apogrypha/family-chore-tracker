@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { errorMessage } from "@/app/error-copy";
 import { serverPorts } from "@/composition/server";
 import { deriveContext } from "@/composition/request";
 import { listTemplates } from "@/usecases/chores";
@@ -49,11 +50,20 @@ export default async function TemplatesPage() {
         <Link href="/">← Profiles</Link>
       </p>
       <h1>Manage chores</h1>
-      <TemplateManager
-        templates={templates}
-        kids={kids}
-        today={ports.clock.today()}
-      />
+      {!templatesResult.ok ? (
+        <p className="error" role="alert">
+          {errorMessage(templatesResult.error.code, {
+            persistence_unavailable:
+              "Couldn't load your chores just now — try again shortly.",
+          })}
+        </p>
+      ) : (
+        <TemplateManager
+          templates={templates}
+          kids={kids}
+          today={ports.clock.today()}
+        />
+      )}
     </main>
   );
 }

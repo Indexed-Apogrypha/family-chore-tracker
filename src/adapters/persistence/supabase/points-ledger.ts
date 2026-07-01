@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/composition/database.types";
+import { familyId, memberId, submissionId } from "@/domain/shared/ids";
 import type { PointsLedger } from "@/ports/repositories";
 
 /** A duplicate `submission_id` means this submission was already credited. */
@@ -36,6 +37,26 @@ export function supabasePointsLedger(
         .eq("member_id", member);
       if (error) throw error;
       return data.reduce((sum, row) => sum + row.delta, 0);
+    },
+
+    async listFor(family, member) {
+      const { data, error } = await client
+        .from("points_ledger")
+        .select("*")
+        .eq("family_id", family)
+        .eq("member_id", member)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data.map((row) => ({
+        familyId: familyId(row.family_id),
+        memberId: memberId(row.member_id),
+        submissionId: submissionId(row.submission_id),
+        delta: row.delta,
+        reason: "chore_approved" as const,
+        // Canonicalize timestamptz (`…+00:00`) to the app's ISO instant (`…Z`),
+        // matching the in-memory adapter and the clock (#117).
+        createdAt: new Date(row.created_at).toISOString(),
+      }));
     },
   };
 }

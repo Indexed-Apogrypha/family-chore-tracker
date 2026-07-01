@@ -2,9 +2,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/composition/database.types";
 import type { ChoreInstance, ChoreTemplate } from "@/domain/chore/types";
-import type { InstanceStatus, Recurrence } from "@/domain/shared/enums";
+import type { InstanceStatus } from "@/domain/shared/enums";
 import { familyId, instanceId, memberId, templateId } from "@/domain/shared/ids";
 import type { ChoreRepository } from "@/ports/repositories";
+
+import { storedRecurrence } from "./parse";
 
 type TemplateRow = Database["public"]["Tables"]["chore_templates"]["Row"];
 type InstanceRow = Database["public"]["Tables"]["chore_instances"]["Row"];
@@ -19,7 +21,9 @@ function toTemplate(row: TemplateRow): ChoreTemplate {
     title: row.title,
     ...(row.description !== null ? { description: row.description } : {}),
     points: row.points,
-    recurrence: row.recurrence as unknown as Recurrence,
+    // Validated at the read boundary (#137): a malformed stored recurrence
+    // fails loud (→ persistence_unavailable) instead of breaking `isDue`.
+    recurrence: storedRecurrence(row.recurrence),
     assignedMemberId: memberId(row.assigned_member_id),
     active: row.active,
   };

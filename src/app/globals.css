@@ -253,6 +253,47 @@ button:disabled {
   color: color-mix(in srgb, #2e9e4f 80%, currentColor);
 }
 
+/* Points history (the ledger behind the total) */
+.history {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 0.5rem;
+}
+
+.history-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.history-title {
+  font-weight: 600;
+}
+
+.history-date {
+  font-size: 0.8rem;
+  color: color-mix(in srgb, currentColor 65%, transparent);
+}
+
+.history-delta {
+  font-weight: 600;
+  color: color-mix(in srgb, #2e9e4f 80%, currentColor);
+  flex-shrink: 0;
+}
+
 /* Parent review queue */
 .review-list {
   list-style: none;
@@ -279,6 +320,16 @@ button:disabled {
   border-radius: 0.4rem;
   background: color-mix(in srgb, currentColor 10%, transparent);
   flex-shrink: 0;
+}
+
+/* Signed URL expired — same footprint as the photo, with an explanation. */
+.review-photo-expired {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.35rem;
+  font-size: 0.75rem;
 }
 
 .review-body {

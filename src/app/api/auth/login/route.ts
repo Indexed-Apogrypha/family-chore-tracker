@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 
+import { readJson } from "@/app/api/http";
 import { memberContext } from "@/app-session/context";
 import { setActiveMember } from "@/composition/request";
 import { serverPorts } from "@/composition/server";
@@ -13,10 +14,8 @@ import { findActingParent } from "@/usecases/auth";
  * (needs the signup bootstrap).
  */
 export async function POST(request: Request): Promise<Response> {
-  const { email, password } = (await request.json()) as {
-    email?: string;
-    password?: string;
-  };
+  const body = await readJson<{ email?: string; password?: string }>(request);
+  const { email, password } = body ?? {};
   if (!email || !password) {
     return Response.json({ error: "missing_fields" }, { status: 400 });
   }

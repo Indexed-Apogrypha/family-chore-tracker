@@ -154,6 +154,27 @@ export interface SubmissionRepository {
       decidedAt: IsoInstant;
     },
   ): Promise<void>;
+  /**
+   * Atomically settle a parent's **authoritative** decision (§7.1, #136): record
+   * the decision on the submission, move its instance (`approved`, or recycled to
+   * `todo` on reject — `chore_instances` has no `rejected` state), and, when
+   * `credit` is present, append the points-ledger entry — all in one transaction
+   * on the Supabase adapter (an RPC) so an infra fault can't leave a submission
+   * `approved` with no points credited or an instance that never advanced. The
+   * credit stays idempotent on `submissionId` (ledger unique key), so a replay
+   * never double-credits. The in-memory adapter writes all three synchronously.
+   */
+  recordDecisionAndSettle(
+    familyId: FamilyId,
+    id: SubmissionId,
+    instanceId: InstanceId,
+    decision: {
+      status: "approved" | "rejected";
+      decidedBy: MemberId;
+      decidedAt: IsoInstant;
+    },
+    credit: { memberId: MemberId; delta: number } | null,
+  ): Promise<void>;
   listByStatus(
     familyId: FamilyId,
     status: SubmissionStatus,
@@ -171,4 +192,10 @@ export interface PointsLedger {
    * Supabase RLS — entries from another family never count (§9).
    */
   totalFor(familyId: FamilyId, memberId: MemberId): Promise<number>;
+  /**
+   * A member's ledger entries, newest first — the audit trail behind the total
+   * (§6: the ledger is the source of truth; there is no mutable balance).
+   * Family-scoped like every read; another family's entries never appear (§9).
+   */
+  listFor(familyId: FamilyId, memberId: MemberId): Promise<LedgerEntry[]>;
 }

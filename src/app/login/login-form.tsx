@@ -43,9 +43,10 @@ export function LoginForm() {
         submit();
       }}
     >
-      <label>
+      <label htmlFor="login-email">
         Email
         <input
+          id="login-email"
           type="email"
           autoComplete="email"
           value={email}
@@ -53,9 +54,10 @@ export function LoginForm() {
           required
         />
       </label>
-      <label>
+      <label htmlFor="login-password">
         Password
         <input
+          id="login-password"
           type="password"
           autoComplete="current-password"
           value={password}

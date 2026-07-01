@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { errorMessage } from "@/app/error-copy";
+import { type ApiErrorBody, errorMessageFromBody } from "@/app/error-copy";
 import type { Recurrence } from "@/domain/shared/enums";
 
 interface TemplateDto {
@@ -42,7 +42,8 @@ const TEMPLATE_ERRORS = {
   forbidden: "Only a parent can do that.",
   not_found: "That chore or kid is no longer available.",
 };
-const explain = (code?: string) => errorMessage(code, TEMPLATE_ERRORS);
+const explain = (body: ApiErrorBody) =>
+  errorMessageFromBody(body, TEMPLATE_ERRORS);
 
 async function postJson(url: string, body: unknown) {
   const res = await fetch(url, {
@@ -50,8 +51,8 @@ async function postJson(url: string, body: unknown) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = (await res.json().catch(() => ({}))) as { error?: string };
-  return { ok: res.ok, error: data.error };
+  const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+  return { ok: res.ok, body: data };
 }
 
 function recurrenceLabel(r: Recurrence): string {
@@ -73,19 +74,21 @@ function recurrenceLabel(r: Recurrence): string {
  */
 export function TemplateManager({ templates, kids, today }: Props) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
+  // Per-template busy id so only the toggled row's button disables — the
+  // parent can still see (and use) the rest of the list.
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function toggleActive(id: string, active: boolean) {
-    setBusy(true);
+    setBusyId(id);
     setError(null);
-    const { ok, error } = await postJson("/api/templates/active", {
+    const { ok, body } = await postJson("/api/templates/active", {
       templateId: id,
       active,
     });
-    setBusy(false);
+    setBusyId(null);
     if (!ok) {
-      setError(explain(error));
+      setError(explain(body));
       return;
     }
     router.refresh();
@@ -113,7 +116,8 @@ export function TemplateManager({ templates, kids, today }: Props) {
               </div>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busyId === t.id}
+                aria-label={`${t.active ? "Deactivate" : "Reactivate"} ${t.title}`}
                 onClick={() => toggleActive(t.id, !t.active)}
               >
                 {t.active ? "Deactivate" : "Reactivate"}
@@ -169,11 +173,15 @@ function AddTemplate({
   }
 
   async function submit() {
+    if (kind === "weekly" && days.length === 0) {
+      setError("Pick at least one day of the week.");
+      return;
+    }
     setSaving(true);
     setError(null);
     const recurrence: Recurrence =
       kind === "daily" ? { kind: "daily" } : { kind: "weekly", days };
-    const { ok, error } = await postJson("/api/templates", {
+    const { ok, body } = await postJson("/api/templates", {
       title,
       points,
       recurrence,
@@ -181,7 +189,7 @@ function AddTemplate({
     });
     setSaving(false);
     if (!ok) {
-      setError(explain(error));
+      setError(explain(body));
       return;
     }
     setTitle("");
@@ -198,13 +206,19 @@ function AddTemplate({
       }}
     >
       <h2>Add a recurring chore</h2>
-      <label>
+      <label htmlFor="tpl-title">
         Title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input
+          id="tpl-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+        />
       </label>
-      <label>
+      <label htmlFor="tpl-points">
         Points
         <input
+          id="tpl-points"
           type="number"
           min={1}
           value={points}
@@ -212,9 +226,10 @@ function AddTemplate({
           required
         />
       </label>
-      <label>
+      <label htmlFor="tpl-kind">
         Repeats
         <select
+          id="tpl-kind"
           value={kind}
           onChange={(e) => setKind(e.target.value as "daily" | "weekly")}
         >
@@ -237,9 +252,13 @@ function AddTemplate({
           ))}
         </fieldset>
       ) : null}
-      <label>
+      <label htmlFor="tpl-assignee">
         Assign to
-        <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+        <select
+          id="tpl-assignee"
+          value={assignee}
+          onChange={(e) => setAssignee(e.target.value)}
+        >
           {kids.map((k) => (
             <option key={k.id} value={k.id}>
               {k.displayName}
@@ -278,7 +297,7 @@ function AddOneOff({
   async function submit() {
     setSaving(true);
     setError(null);
-    const { ok, error } = await postJson("/api/oneoffs", {
+    const { ok, body } = await postJson("/api/oneoffs", {
       title,
       points,
       assignedMemberId: assignee,
@@ -286,7 +305,7 @@ function AddOneOff({
     });
     setSaving(false);
     if (!ok) {
-      setError(explain(error));
+      setError(explain(body));
       return;
     }
     setTitle("");
@@ -303,13 +322,19 @@ function AddOneOff({
       }}
     >
       <h2>Add a one-off chore</h2>
-      <label>
+      <label htmlFor="oneoff-title">
         Title
-        <input value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input
+          id="oneoff-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+        />
       </label>
-      <label>
+      <label htmlFor="oneoff-points">
         Points
         <input
+          id="oneoff-points"
           type="number"
           min={1}
           value={points}
@@ -317,18 +342,23 @@ function AddOneOff({
           required
         />
       </label>
-      <label>
+      <label htmlFor="oneoff-due">
         Due date
         <input
+          id="oneoff-due"
           type="date"
           value={dueDate}
           onChange={(e) => setDueDate(e.target.value)}
           required
         />
       </label>
-      <label>
+      <label htmlFor="oneoff-assignee">
         Assign to
-        <select value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+        <select
+          id="oneoff-assignee"
+          value={assignee}
+          onChange={(e) => setAssignee(e.target.value)}
+        >
           {kids.map((k) => (
             <option key={k.id} value={k.id}>
               {k.displayName}

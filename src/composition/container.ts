@@ -100,8 +100,9 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
   }
 
   const photos = inMemoryPhotoStorage();
-  // One shared store so the chore + submission repos observe each other's writes
-  // (the atomic `recordVerdictAndAdvance`, §7.2) — like the single Supabase DB.
+  // One shared store so the chore + submission + points repos observe each
+  // other's writes (the atomic `recordVerdictAndAdvance` §7.2 and
+  // `recordDecisionAndSettle` §7.1/#136) — like the single Supabase DB.
   const store = createInMemoryStore();
   return {
     judge: selectJudge(config.judge, photos),
@@ -110,6 +111,6 @@ export function buildPorts(config: EnvConfig = readEnv()): Ports {
     chores: inMemoryChoreRepository(store),
     submissions: inMemorySubmissionRepository(store),
     members: inMemoryMemberRepository(),
-    points: inMemoryPointsLedger(),
+    points: inMemoryPointsLedger(store),
   };
 }

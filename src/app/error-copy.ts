@@ -18,6 +18,8 @@ const ERROR_COPY: Record<string, string> = {
   // HTTP-layer codes the route handlers add
   unauthenticated: "Please sign in again.",
   too_large: "That photo is too large.",
+  too_many_attempts: "Too many wrong PINs — wait a few minutes and try again.",
+  cross_origin: "That request didn't come from this app.",
   // Parent auth route codes (§3.1)
   missing_fields: "Enter your email and password.",
   invalid_credentials: "Email or password is incorrect.",
@@ -33,4 +35,25 @@ export function errorMessage(
 ): string {
   if (code && overrides?.[code]) return overrides[code];
   return (code && ERROR_COPY[code]) || FALLBACK;
+}
+
+/** The error body shape every API route returns (see `app/api/http.ts`). */
+export interface ApiErrorBody {
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Map an API error body to user-facing copy. `overrides` win (flow-specific
+ * wording), then a `validation` error's server-provided field message — "title
+ * must be 80 characters or fewer.", not a generic "check the form" (§8.2) —
+ * then the shared map.
+ */
+export function errorMessageFromBody(
+  body: ApiErrorBody,
+  overrides?: Record<string, string>,
+): string {
+  if (body.error && overrides?.[body.error]) return overrides[body.error];
+  if (body.error === "validation" && body.message) return body.message;
+  return errorMessage(body.error, overrides);
 }
