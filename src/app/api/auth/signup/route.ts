@@ -41,8 +41,10 @@ export async function POST(request: Request): Promise<Response> {
 
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error || !data.user) {
+    // A stable code plus Supabase's human-readable message — the form shows
+    // the message ("Password should be at least 6 characters", …) when present.
     return Response.json(
-      { error: error?.message ?? "signup_failed" },
+      { error: "signup_failed", ...(error ? { message: error.message } : {}) },
       { status: 400 },
     );
   }

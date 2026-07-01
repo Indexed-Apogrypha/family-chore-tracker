@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { errorMessage } from "@/app/error-copy";
+import { RefreshOnFocus } from "@/app/refresh-on-focus";
 import { serverPorts } from "@/composition/server";
 import { deriveContext } from "@/composition/request";
 import type { InstanceStatus } from "@/domain/shared/enums";
@@ -55,6 +57,8 @@ export default async function BoardPage() {
 
   return (
     <main>
+      {/* Points/statuses change from other profiles' screens — refetch on focus. */}
+      <RefreshOnFocus />
       <p className="board-nav">
         <Link href="/">← Profiles</Link>
       </p>
@@ -64,7 +68,14 @@ export default async function BoardPage() {
         <span className="points-total">{total} pts</span> · {today}
       </p>
 
-      {chores.length === 0 ? (
+      {!result.ok ? (
+        <p className="error" role="alert">
+          {errorMessage(result.error.code, {
+            persistence_unavailable:
+              "Couldn't load your chores just now — try again shortly.",
+          })}
+        </p>
+      ) : chores.length === 0 ? (
         <p className="hint">No chores for today. 🎉</p>
       ) : (
         <ul className="board">

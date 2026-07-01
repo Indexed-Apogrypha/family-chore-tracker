@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { errorMessage } from "@/app/error-copy";
+import { type ApiErrorBody, errorMessageFromBody } from "@/app/error-copy";
 
 const CAPTURE_ERRORS = {
   forbidden: "That chore isn't yours to submit.",
@@ -11,8 +11,7 @@ const CAPTURE_ERRORS = {
   validation: "Please choose an image and try again.",
 };
 
-interface SubmitResult {
-  error?: string;
+interface SubmitResult extends ApiErrorBody {
   submissionId?: string;
 }
 
@@ -38,7 +37,7 @@ export function ChoreCapture({ instanceId }: { instanceId: string }) {
       router.refresh();
       return;
     }
-    setError(errorMessage(data.error, CAPTURE_ERRORS));
+    setError(errorMessageFromBody(data, CAPTURE_ERRORS));
     setRetryId(
       data.error === "judge_unavailable" ? (data.submissionId ?? null) : null,
     );
@@ -81,6 +80,7 @@ export function ChoreCapture({ instanceId }: { instanceId: string }) {
           type="file"
           accept="image/*"
           capture="environment"
+          aria-label="Choose a photo of the finished chore"
           hidden
           disabled={busy}
           onChange={onPick}

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { errorMessage } from "@/app/error-copy";
+import { RefreshOnFocus } from "@/app/refresh-on-focus";
 import { deriveContext } from "@/composition/request";
 import { serverPorts } from "@/composition/server";
 import { listMembers } from "@/usecases/members";
@@ -51,11 +53,24 @@ export default async function ReviewPage() {
 
   return (
     <main>
+      {/* New submissions arrive from the kids' screens — refetch on focus. */}
+      <RefreshOnFocus />
       <p className="board-nav">
         <Link href="/">← Profiles</Link>
       </p>
       <h1>Review submissions</h1>
-      <ReviewQueue items={items} />
+      {!queueResult.ok ? (
+        <p className="error" role="alert">
+          {errorMessage(queueResult.error.code, {
+            persistence_unavailable:
+              "Couldn't load the review queue just now — try again shortly.",
+            storage_unavailable:
+              "Couldn't load the submission photos just now — try again shortly.",
+          })}
+        </p>
+      ) : (
+        <ReviewQueue items={items} />
+      )}
     </main>
   );
 }

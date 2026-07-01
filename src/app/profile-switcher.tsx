@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { errorMessage } from "@/app/error-copy";
+import { type ApiErrorBody, errorMessageFromBody } from "@/app/error-copy";
 
 interface MemberDto {
   id: string;
@@ -26,16 +26,16 @@ async function postJson(url: string, body?: unknown) {
     headers: { "content-type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = (await res.json().catch(() => ({}))) as { error?: string };
-  return { ok: res.ok, error: data.error };
+  const data = (await res.json().catch(() => ({}))) as ApiErrorBody;
+  return { ok: res.ok, body: data };
 }
 
 const PROFILE_ERRORS = {
   not_found: "That profile is no longer available.",
-  validation: "Please fill in both a name and a PIN.",
   forbidden: "Only a parent can do that.",
 };
-const explain = (code?: string) => errorMessage(code, PROFILE_ERRORS);
+const explain = (body: ApiErrorBody) =>
+  errorMessageFromBody(body, PROFILE_ERRORS);
 
 /**
  * The parent↔kid profile switcher (design §3.1). Selecting the parent switches
@@ -62,13 +62,13 @@ export function ProfileSwitcher({
   async function switchTo(memberId: string, withPin?: string) {
     setBusy(true);
     setError(null);
-    const { ok, error } = await postJson("/api/profile/switch", {
+    const { ok, body } = await postJson("/api/profile/switch", {
       memberId,
       pin: withPin,
     });
     setBusy(false);
     if (!ok) {
-      setError(explain(error));
+      setError(explain(body));
       return;
     }
     setPinFor(null);
@@ -77,6 +77,7 @@ export function ProfileSwitcher({
   }
 
   async function logout() {
+    if (!window.confirm("Log out of this device?")) return;
     setBusy(true);
     await postJson("/api/auth/logout");
     router.push("/login");
@@ -190,13 +191,13 @@ function AddKid({ busy, onAdded }: { busy: boolean; onAdded: () => void }) {
   async function submit() {
     setSaving(true);
     setError(null);
-    const { ok, error } = await postJson("/api/members", {
+    const { ok, body } = await postJson("/api/members", {
       displayName: name,
       pin,
     });
     setSaving(false);
     if (!ok) {
-      setError(explain(error));
+      setError(explain(body));
       return;
     }
     setName("");
@@ -214,17 +215,19 @@ function AddKid({ busy, onAdded }: { busy: boolean; onAdded: () => void }) {
     >
       <h2>Add a kid</h2>
       <div className="fields">
-        <label>
+        <label htmlFor="add-kid-name">
           Name
           <input
+            id="add-kid-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
         </label>
-        <label>
+        <label htmlFor="add-kid-pin">
           PIN
           <input
+            id="add-kid-pin"
             type="password"
             inputMode="numeric"
             autoComplete="off"

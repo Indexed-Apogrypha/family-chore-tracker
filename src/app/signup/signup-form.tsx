@@ -1,7 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+
+import { type ApiErrorBody, errorMessageFromBody } from "@/app/error-copy";
+
+const SIGNUP_ERRORS = {
+  missing_fields: "Fill in every field to create your family.",
+  signup_failed: "Could not sign up — try a different email or password.",
+};
 
 /**
  * Parent signup form — creates the Supabase account and bootstraps the family
@@ -27,13 +35,14 @@ export function SignupForm() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password, familyName, displayName }),
     });
-    const data = (await res.json().catch(() => ({}))) as {
-      error?: string;
+    const data = (await res.json().catch(() => ({}))) as ApiErrorBody & {
       session?: boolean;
     };
     setBusy(false);
     if (!res.ok) {
-      setError(data.error ? `Could not sign up: ${data.error}` : "Could not sign up.");
+      // Supabase's own message ("Password should be at least 6 characters", …)
+      // reads better than a generic failure when present.
+      setError(data.message ?? errorMessageFromBody(data, SIGNUP_ERRORS));
       return;
     }
     if (data.session) {
@@ -49,7 +58,7 @@ export function SignupForm() {
     return (
       <p className="hint" role="status">
         Account created. Check your email to confirm your address, then{" "}
-        <a href="/login">log in</a>.
+        <Link href="/login">log in</Link>.
       </p>
     );
   }
@@ -62,25 +71,28 @@ export function SignupForm() {
         submit();
       }}
     >
-      <label>
+      <label htmlFor="signup-family">
         Family name
         <input
+          id="signup-family"
           value={familyName}
           onChange={(e) => setFamilyName(e.target.value)}
           required
         />
       </label>
-      <label>
+      <label htmlFor="signup-name">
         Your name
         <input
+          id="signup-name"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           required
         />
       </label>
-      <label>
+      <label htmlFor="signup-email">
         Email
         <input
+          id="signup-email"
           type="email"
           autoComplete="email"
           value={email}
@@ -88,9 +100,10 @@ export function SignupForm() {
           required
         />
       </label>
-      <label>
+      <label htmlFor="signup-password">
         Password
         <input
+          id="signup-password"
           type="password"
           autoComplete="new-password"
           value={password}

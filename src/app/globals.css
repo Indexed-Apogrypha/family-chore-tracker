@@ -281,6 +281,16 @@ button:disabled {
   flex-shrink: 0;
 }
 
+/* Signed URL expired — same footprint as the photo, with an explanation. */
+.review-photo-expired {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.35rem;
+  font-size: 0.75rem;
+}
+
 .review-body {
   display: flex;
   flex-direction: column;
