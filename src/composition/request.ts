@@ -25,6 +25,9 @@ export const PRACTICE_FAMILY_COOKIE = "practice_family";
 const COOKIE_OPTS = {
   httpOnly: true,
   sameSite: "lax",
+  // HTTPS-only in production so the session cookies can't transit plaintext;
+  // local dev runs plain-http localhost (where Safari drops Secure cookies).
+  secure: process.env.NODE_ENV === "production",
   path: "/",
 } as const;
 

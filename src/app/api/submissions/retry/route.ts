@@ -1,3 +1,4 @@
+import { badRequest, readJson, unauthenticated } from "@/app/api/http";
 import { deriveContext } from "@/composition/request";
 import { serverPorts } from "@/composition/server";
 import { submissionId } from "@/domain/shared/ids";
@@ -13,16 +14,10 @@ import { submissionResponse } from "../respond";
  */
 export async function POST(request: Request): Promise<Response> {
   const ctx = await deriveContext();
-  if (!ctx) {
-    return Response.json({ error: "unauthenticated" }, { status: 401 });
-  }
+  if (!ctx) return unauthenticated();
 
-  const body = (await request.json().catch(() => ({}))) as {
-    submissionId?: string;
-  };
-  if (typeof body.submissionId !== "string") {
-    return Response.json({ error: "validation" }, { status: 400 });
-  }
+  const body = await readJson<{ submissionId?: string }>(request);
+  if (!body || typeof body.submissionId !== "string") return badRequest();
 
   const result = await retrySubmission(serverPorts(), ctx, {
     submissionId: submissionId(body.submissionId),

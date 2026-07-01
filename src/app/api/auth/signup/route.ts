@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 
+import { readJson } from "@/app/api/http";
 import { setActiveMember } from "@/composition/request";
 import { serverPorts } from "@/composition/server";
 import { createSupabaseServerClient } from "@/composition/supabase";
@@ -17,12 +18,13 @@ import { createSupabaseServerClient } from "@/composition/supabase";
  * confirm their email first (#102).
  */
 export async function POST(request: Request): Promise<Response> {
-  const { email, password, familyName, displayName } = (await request.json()) as {
+  const body = await readJson<{
     email?: string;
     password?: string;
     familyName?: string;
     displayName?: string;
-  };
+  }>(request);
+  const { email, password, familyName, displayName } = body ?? {};
   if (!email || !password || !familyName || !displayName) {
     return Response.json({ error: "missing_fields" }, { status: 400 });
   }

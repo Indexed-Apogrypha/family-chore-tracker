@@ -18,6 +18,8 @@ const ERROR_COPY: Record<string, string> = {
   // HTTP-layer codes the route handlers add
   unauthenticated: "Please sign in again.",
   too_large: "That photo is too large.",
+  too_many_attempts: "Too many wrong PINs — wait a few minutes and try again.",
+  cross_origin: "That request didn't come from this app.",
   // Parent auth route codes (§3.1)
   missing_fields: "Enter your email and password.",
   invalid_credentials: "Email or password is incorrect.",
