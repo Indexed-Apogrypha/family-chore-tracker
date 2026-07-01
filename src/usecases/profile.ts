@@ -5,6 +5,8 @@ import type { Result } from "@/domain/shared/result";
 import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 
+import { persistOp, requireFamilyMember } from "./infra";
+
 export interface SwitchProfileInput {
   memberId: MemberId;
   /** Required when switching to a kid; ignored for the parent (§3.1). */
@@ -25,17 +27,14 @@ export async function switchProfile(
   ctx: RequestContext,
   input: SwitchProfileInput,
 ): Promise<Result<Member>> {
-  const member = await ports.members.getMember(ctx.familyId, input.memberId);
-  if (!member) {
-    return err({ code: "not_found", entity: "member", id: input.memberId });
-  }
-  if (member.kind === "parent") return ok(member);
+  const memberR = await requireFamilyMember(ports, ctx.familyId, input.memberId);
+  if (!memberR.ok) return memberR;
+  if (memberR.value.kind === "parent") return ok(memberR.value);
 
-  const kid = await ports.members.verifyKidPin(
-    ctx.familyId,
-    input.memberId,
-    input.pin ?? "",
+  const kidR = await persistOp(() =>
+    ports.members.verifyKidPin(ctx.familyId, input.memberId, input.pin ?? ""),
   );
-  if (!kid) return err({ code: "bad_pin" });
-  return ok(kid);
+  if (!kidR.ok) return kidR;
+  if (!kidR.value) return err({ code: "bad_pin" });
+  return ok(kidR.value);
 }

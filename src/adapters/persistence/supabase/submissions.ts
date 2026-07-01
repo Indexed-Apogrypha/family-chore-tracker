@@ -9,8 +9,9 @@ import {
   submissionId,
 } from "@/domain/shared/ids";
 import type { Submission } from "@/domain/submission/types";
-import type { Verdict } from "@/ports/judge";
 import type { SubmissionRepository } from "@/ports/repositories";
+
+import { storedVerdict } from "./parse";
 
 type SubmissionRow = Database["public"]["Tables"]["submissions"]["Row"];
 
@@ -22,9 +23,9 @@ function toSubmission(row: SubmissionRow): Submission {
     submittedBy: memberId(row.submitted_by),
     photoPath: row.photo_path,
     status: row.status as SubmissionStatus,
-    ...(row.ai_verdict !== null
-      ? { aiVerdict: row.ai_verdict as unknown as Verdict }
-      : {}),
+    // Validated at the read boundary (#137): a malformed stored verdict fails
+    // loud (→ persistence_unavailable) instead of leaking into domain logic.
+    ...(row.ai_verdict !== null ? { aiVerdict: storedVerdict(row.ai_verdict) } : {}),
     ...(row.decided_by !== null ? { decidedBy: memberId(row.decided_by) } : {}),
     // Postgres `timestamptz` reads back as e.g. `…+00:00`; canonicalize to the
     // app's ISO instant (`…Z`) so the value matches the in-memory adapter and
@@ -98,6 +99,24 @@ export function supabaseSubmissionRepository(
         p_submission_id: id,
         p_instance_id: instance,
         p_verdict: verdict as unknown as Json,
+      });
+      if (error) throw error;
+    },
+
+    async recordDecisionAndSettle(family, id, instance, decision, credit) {
+      // One transaction (the SECURITY DEFINER RPC, #136): the decision, the
+      // instance move, and the idempotent points credit commit together, so an
+      // infra fault can't approve a submission without crediting its points.
+      const { error } = await client.rpc("record_decision_and_settle", {
+        p_family_id: family,
+        p_submission_id: id,
+        p_instance_id: instance,
+        p_status: decision.status,
+        p_decided_by: decision.decidedBy,
+        p_decided_at: decision.decidedAt,
+        ...(credit
+          ? { p_credit_member_id: credit.memberId, p_credit_delta: credit.delta }
+          : {}),
       });
       if (error) throw error;
     },

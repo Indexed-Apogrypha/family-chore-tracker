@@ -6,6 +6,7 @@ import type { Ports } from "@/ports";
 import type { RequestContext } from "@/ports/context";
 
 import { requireParent } from "./authz";
+import { persistOp, storeOp } from "./infra";
 
 /** A submission awaiting a parent's decision, with a viewable photo URL (§8.1). */
 export interface ReviewItem {
@@ -31,26 +32,28 @@ export async function getReviewQueue(
   const gate = requireParent(ctx);
   if (!gate.ok) return gate;
 
-  const submissions = await ports.submissions.listByStatus(
-    ctx.familyId,
-    "pending_review",
+  const submissionsR = await persistOp(() =>
+    ports.submissions.listByStatus(ctx.familyId, "pending_review"),
   );
-  const items = await Promise.all(
-    submissions.map(async (submission) => {
-      const [photoUrl, instance] = await Promise.all([
-        ports.photos.signedUrl({ path: submission.photoPath }),
-        ports.chores.getInstance(ctx.familyId, submission.instanceId),
-      ]);
-      // Display-only fallback if the instance is somehow missing; the
-      // authoritative points credit re-reads the instance in `decide`.
-      return {
-        submission,
-        photoUrl,
-        choreTitle: instance?.title ?? "Chore",
-        points: instance?.points ?? 0,
-      };
-    }),
-  );
+  if (!submissionsR.ok) return submissionsR;
+
+  const items: ReviewItem[] = [];
+  for (const submission of submissionsR.value) {
+    const [photoUrlR, instanceR] = await Promise.all([
+      storeOp(() => ports.photos.signedUrl({ path: submission.photoPath })),
+      persistOp(() => ports.chores.getInstance(ctx.familyId, submission.instanceId)),
+    ]);
+    if (!photoUrlR.ok) return photoUrlR;
+    if (!instanceR.ok) return instanceR;
+    // Display-only fallback if the instance is somehow missing; the
+    // authoritative points credit re-reads the instance in `decide`.
+    items.push({
+      submission,
+      photoUrl: photoUrlR.value,
+      choreTitle: instanceR.value?.title ?? "Chore",
+      points: instanceR.value?.points ?? 0,
+    });
+  }
   return ok(items);
 }
 
@@ -71,7 +74,10 @@ export interface DecideInput {
  * - **reject** → submission terminal `rejected`; the instance recycles to `todo`
  *   so a fresh photo starts a new submission (`chore_instances` has no `rejected`).
  *
- * Parent-only; every id is family-scoped (cross-family → `not_found`).
+ * Parent-only; every id is family-scoped (cross-family → `not_found`). The
+ * decision, the instance move, and the credit settle as **one atomic op** —
+ * a transaction on the real adapter (#136) — so a fault can never approve a
+ * submission without crediting its points.
  */
 export async function decide(
   ports: Ports,
@@ -81,7 +87,11 @@ export async function decide(
   const gate = requireParent(ctx);
   if (!gate.ok) return gate;
 
-  const submission = await ports.submissions.get(ctx.familyId, input.submissionId);
+  const submissionR = await persistOp(() =>
+    ports.submissions.get(ctx.familyId, input.submissionId),
+  );
+  if (!submissionR.ok) return submissionR;
+  const submission = submissionR.value;
   if (!submission) {
     return err({
       code: "not_found",
@@ -99,10 +109,11 @@ export async function decide(
     });
   }
 
-  const instance = await ports.chores.getInstance(
-    ctx.familyId,
-    submission.instanceId,
+  const instanceR = await persistOp(() =>
+    ports.chores.getInstance(ctx.familyId, submission.instanceId),
   );
+  if (!instanceR.ok) return instanceR;
+  const instance = instanceR.value;
   if (!instance) {
     return err({
       code: "not_found",
@@ -113,35 +124,29 @@ export async function decide(
 
   const decidedAt = ports.clock.now();
 
-  // `recordDecision` is the commit point: it runs *before* the points credit, so
-  // a partial failure can never credit a still-pending submission, and the
-  // ledger's `submissionId` idempotency bounds double-credit on any replay. Full
-  // atomicity across these writes lands with the transactional Supabase adapter
-  // (follow-up #112).
-  await ports.submissions.recordDecision(ctx.familyId, submission.id, {
-    status,
-    decidedBy: ctx.actor.memberId,
-    decidedAt,
-  });
-  await ports.chores.setInstanceStatus(
-    ctx.familyId,
-    instance.id,
-    approve ? "approved" : "todo", // reject recycles the instance to todo (§7.1)
+  // One atomic op (a transaction on the real adapter, #136): the decision, the
+  // instance move (approve → `approved`, reject → recycle to `todo`, §7.1), and
+  // the idempotent points credit commit or fail together — never a submission
+  // `approved` with no points credited.
+  const settled = await persistOp(() =>
+    ports.submissions.recordDecisionAndSettle(
+      ctx.familyId,
+      submission.id,
+      instance.id,
+      { status, decidedBy: ctx.actor.memberId, decidedAt },
+      approve
+        ? { memberId: instance.assignedMemberId, delta: instance.points }
+        : null,
+    ),
   );
-  if (approve) {
-    await ports.points.append({
-      familyId: ctx.familyId,
-      memberId: instance.assignedMemberId,
-      submissionId: submission.id,
-      delta: instance.points,
-      reason: "chore_approved",
-      createdAt: decidedAt,
-    });
-  }
+  if (!settled.ok) return settled;
 
-  const updated = await ports.submissions.get(ctx.familyId, submission.id);
-  if (!updated) {
+  const updatedR = await persistOp(() =>
+    ports.submissions.get(ctx.familyId, submission.id),
+  );
+  if (!updatedR.ok) return updatedR;
+  if (!updatedR.value) {
     return err({ code: "not_found", entity: "submission", id: submission.id });
   }
-  return ok(updated);
+  return ok(updatedR.value);
 }

@@ -20,6 +20,7 @@ export function inMemorySubmissionRepository(
 ): SubmissionRepository {
   const submissions = store.submissions;
   const instances = store.instances;
+  const ledger = store.ledger;
 
   const scoped = (family: FamilyId, id: SubmissionId): Submission | null => {
     const submission = submissions.get(id);
@@ -89,6 +90,41 @@ export function inMemorySubmissionRepository(
           status: decision.status,
           decidedBy: decision.decidedBy,
           decidedAt: decision.decidedAt,
+        });
+      }
+    },
+
+    async recordDecisionAndSettle(family, id, instanceId, decision, credit) {
+      // All three writes happen synchronously (no interleaving await), so the
+      // decision, the instance move, and the credit can never observe a
+      // half-committed settle — the in-memory mirror of the Supabase RPC's
+      // single transaction (§7.1, #136).
+      const submission = scoped(family, id);
+      if (submission) {
+        submissions.set(id, {
+          ...submission,
+          status: decision.status,
+          decidedBy: decision.decidedBy,
+          decidedAt: decision.decidedAt,
+        });
+      }
+      const instance = instances.get(instanceId);
+      if (instance && instance.familyId === family) {
+        instances.set(instanceId, {
+          ...instance,
+          // Reject recycles the instance to `todo` for a fresh attempt (§7.1).
+          status: decision.status === "approved" ? "approved" : "todo",
+        });
+      }
+      if (credit && !ledger.has(id)) {
+        // Idempotent on submissionId — a replayed settle never double-credits.
+        ledger.set(id, {
+          familyId: family,
+          memberId: credit.memberId,
+          submissionId: id,
+          delta: credit.delta,
+          reason: "chore_approved",
+          createdAt: decision.decidedAt,
         });
       }
     },

@@ -18,8 +18,9 @@ const DEFAULT_NOW = "2026-06-21T09:00:00.000Z";
  * for use-case tests (design §10): full coverage, no network, no AI spend.
  */
 export function inMemoryPorts(now: string = DEFAULT_NOW): Ports {
-  // Shared store → the atomic advance flips the same instance the chore repo
-  // reads (§7.2), so use-case tests see submission + instance move together.
+  // Shared store → the atomic advance/settle flips the same instance (and
+  // credits the same ledger) the other repos read (§7.1, §7.2), so use-case
+  // tests see submission + instance + points move together.
   const store = createInMemoryStore();
   return {
     judge: fakeJudge(),
@@ -28,7 +29,7 @@ export function inMemoryPorts(now: string = DEFAULT_NOW): Ports {
     chores: inMemoryChoreRepository(store),
     submissions: inMemorySubmissionRepository(store),
     members: inMemoryMemberRepository(),
-    points: inMemoryPointsLedger(),
+    points: inMemoryPointsLedger(store),
   };
 }
 

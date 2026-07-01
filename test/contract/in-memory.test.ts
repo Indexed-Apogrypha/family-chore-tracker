@@ -22,15 +22,16 @@ import { runSubmissionRepositoryContract } from "./submission-repository.contrac
 // seam contract (design §5, §10). The Supabase adapters run through these SAME
 // suites (test/contract/*.supabase.test.ts) once a test database exists.
 
-// One shared store per harness so the chore + submission repos observe each
-// other's writes (the atomic advance, §7.2) — mirroring the single Supabase DB.
+// One shared store per harness so the chore + submission + points repos observe
+// each other's writes (the atomic advance §7.2 and settle §7.1/#136) — mirroring
+// the single Supabase DB.
 function inMemoryHarness(): RepoHarness {
   const store = createInMemoryStore();
   return {
     members: inMemoryMemberRepository(),
     chores: inMemoryChoreRepository(store),
     submissions: inMemorySubmissionRepository(store),
-    points: inMemoryPointsLedger(),
+    points: inMemoryPointsLedger(store),
   };
 }
 

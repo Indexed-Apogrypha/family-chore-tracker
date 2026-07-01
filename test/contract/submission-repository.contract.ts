@@ -119,6 +119,63 @@ export function runSubmissionRepositoryContract(
       expect(got?.decidedAt).toBe(decidedAt);
     });
 
+    it("recordDecisionAndSettle approves submission + instance and credits points atomically (#136)", async () => {
+      const { h, family, parent, kid, instance } = await setup();
+      const id = submissionId(crypto.randomUUID());
+      await h.submissions.create(input(family, instance, kid, id));
+      await h.submissions.setStatus(family, id, "pending_review");
+      const decidedAt = "2026-06-21T10:00:00.000Z";
+      await h.submissions.recordDecisionAndSettle(
+        family,
+        id,
+        instance.id,
+        { status: "approved", decidedBy: parent, decidedAt },
+        { memberId: kid, delta: instance.points },
+      );
+      const got = await h.submissions.get(family, id);
+      expect(got?.status).toBe("approved");
+      expect(got?.decidedBy).toBe(parent);
+      expect(got?.decidedAt).toBe(decidedAt);
+      // Instance and credit moved in the same op — the cross-aggregate guarantee.
+      expect((await h.chores.getInstance(family, instance.id))?.status).toBe(
+        "approved",
+      );
+      expect(await h.points.totalFor(family, kid)).toBe(instance.points);
+
+      // A replayed settle is idempotent on submissionId — never double-credits.
+      await h.submissions.recordDecisionAndSettle(
+        family,
+        id,
+        instance.id,
+        { status: "approved", decidedBy: parent, decidedAt },
+        { memberId: kid, delta: instance.points },
+      );
+      expect(await h.points.totalFor(family, kid)).toBe(instance.points);
+    });
+
+    it("recordDecisionAndSettle on reject recycles the instance to todo and credits nothing (§7.1)", async () => {
+      const { h, family, parent, kid, instance } = await setup();
+      const id = submissionId(crypto.randomUUID());
+      await h.submissions.create(input(family, instance, kid, id));
+      await h.submissions.setStatus(family, id, "pending_review");
+      await h.submissions.recordDecisionAndSettle(
+        family,
+        id,
+        instance.id,
+        {
+          status: "rejected",
+          decidedBy: parent,
+          decidedAt: "2026-06-21T10:00:00.000Z",
+        },
+        null,
+      );
+      expect((await h.submissions.get(family, id))?.status).toBe("rejected");
+      expect((await h.chores.getInstance(family, instance.id))?.status).toBe(
+        "todo",
+      );
+      expect(await h.points.totalFor(family, kid)).toBe(0);
+    });
+
     it("scopes by family: another family's submission resolves to null (§9)", async () => {
       const { h, family, kid, instance } = await setup();
       const id = submissionId(crypto.randomUUID());
