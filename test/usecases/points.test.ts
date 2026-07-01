@@ -7,7 +7,7 @@ import type { Ports } from "@/ports";
 import { createOneOff } from "@/usecases/chores";
 import { createFamily } from "@/usecases/family";
 import { addKid } from "@/usecases/members";
-import { pointsTotal } from "@/usecases/points";
+import { pointsHistory, pointsTotal } from "@/usecases/points";
 import { decide } from "@/usecases/review";
 import { submitPhoto } from "@/usecases/submission";
 
@@ -78,5 +78,75 @@ describe("pointsTotal (any family member, §8.1)", () => {
     const result = await pointsTotal(a.ports, a.parentCtx, { memberId: b.kid.id });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("not_found");
+  });
+});
+
+describe("pointsHistory (any family member, §6, §8.1)", () => {
+  async function approveOneOff(
+    seed: Awaited<ReturnType<typeof withFamilyAndKid>>,
+    title: string,
+    points: number,
+  ) {
+    const { ports, parentCtx, kid, kidCtx } = seed;
+    const instance = unwrap(
+      await createOneOff(ports, parentCtx, {
+        title,
+        points,
+        assignedMemberId: kid.id,
+        dueDate: "2026-06-21",
+      }),
+    );
+    const submission = unwrap(
+      await submitPhoto(ports, kidCtx, {
+        instanceId: instance.id,
+        bytes: new Uint8Array([1, 2, 3]),
+        contentType: "image/jpeg",
+      }),
+    );
+    unwrap(
+      await decide(ports, parentCtx, {
+        submissionId: submission.id,
+        decision: "approve",
+      }),
+    );
+  }
+
+  it("is empty before any chore is approved", async () => {
+    const { ports, kidCtx, kid } = await withFamilyAndKid();
+    expect(unwrap(await pointsHistory(ports, kidCtx, { memberId: kid.id }))).toEqual(
+      [],
+    );
+  });
+
+  it("lists each credit with its chore title, readable by parent and kid", async () => {
+    const seed = await withFamilyAndKid();
+    await approveOneOff(seed, "Sweep", 8);
+    await approveOneOff(seed, "Dishes", 3);
+
+    const history = unwrap(
+      await pointsHistory(seed.ports, seed.kidCtx, { memberId: seed.kid.id }),
+    );
+    expect(history).toHaveLength(2);
+    // Every credit resolves to its chore snapshot; totals reconcile with the sum.
+    expect(new Set(history.map((h) => `${h.choreTitle}:${h.delta}`))).toEqual(
+      new Set(["Sweep:8", "Dishes:3"]),
+    );
+    expect(
+      unwrap(await pointsTotal(seed.ports, seed.parentCtx, { memberId: seed.kid.id })),
+    ).toBe(history.reduce((sum, h) => sum + h.delta, 0));
+  });
+
+  it("resolves an unknown or cross-family member to not_found (§9)", async () => {
+    const a = await withFamilyAndKid();
+    const b = await withFamilyAndKid(a.ports);
+    const unknown = await pointsHistory(a.ports, a.parentCtx, {
+      memberId: memberId("nope"),
+    });
+    expect(unknown.ok).toBe(false);
+    const crossFamily = await pointsHistory(a.ports, a.parentCtx, {
+      memberId: b.kid.id,
+    });
+    expect(crossFamily.ok).toBe(false);
+    if (!crossFamily.ok) expect(crossFamily.error.code).toBe("not_found");
   });
 });

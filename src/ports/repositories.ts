@@ -192,4 +192,10 @@ export interface PointsLedger {
    * Supabase RLS — entries from another family never count (§9).
    */
   totalFor(familyId: FamilyId, memberId: MemberId): Promise<number>;
+  /**
+   * A member's ledger entries, newest first — the audit trail behind the total
+   * (§6: the ledger is the source of truth; there is no mutable balance).
+   * Family-scoped like every read; another family's entries never appear (§9).
+   */
+  listFor(familyId: FamilyId, memberId: MemberId): Promise<LedgerEntry[]>;
 }

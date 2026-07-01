@@ -35,5 +35,11 @@ export function inMemoryPointsLedger(
       }
       return total;
     },
+
+    async listFor(family: FamilyId, member: MemberId) {
+      return [...ledger.values()]
+        .filter((e) => e.familyId === family && e.memberId === member)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    },
   };
 }

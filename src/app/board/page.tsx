@@ -65,7 +65,10 @@ export default async function BoardPage() {
       <h1>Today&rsquo;s chores</h1>
       <p className="board-sub">
         {me ? `${me.displayName} · ` : ""}
-        <span className="points-total">{total} pts</span> · {today}
+        <Link href="/points" className="points-total">
+          {total} pts
+        </Link>{" "}
+        · {today}
       </p>
 
       {!result.ok ? (

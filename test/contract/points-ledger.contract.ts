@@ -100,6 +100,41 @@ export function runPointsLedgerContract(
       expect(await h.points.totalFor(f.family, memberId("no-such-member"))).toBe(0);
     });
 
+    it("listFor returns the member's entries newest first — the history behind the total", async () => {
+      const h = makeHarness();
+      const f = await seedLedgerFamily(h);
+      const older = await f.mkSubmission();
+      const newer = await f.mkSubmission();
+      await h.points.append(
+        f.entry(older, { delta: 5, createdAt: "2026-06-21T09:00:00.000Z" }),
+      );
+      await h.points.append(
+        f.entry(newer, { delta: 3, createdAt: "2026-06-22T09:00:00.000Z" }),
+      );
+      const history = await h.points.listFor(f.family, f.kid);
+      expect(history.map((e) => e.submissionId)).toEqual([newer, older]);
+      expect(history[0]).toEqual(
+        f.entry(newer, { delta: 3, createdAt: "2026-06-22T09:00:00.000Z" }),
+      );
+    });
+
+    it("listFor isolates by member and family (§9)", async () => {
+      const h = makeHarness();
+      const f1 = await seedLedgerFamily(h);
+      const f2 = await seedLedgerFamily(h);
+      const sib = await f1.addKid();
+      await h.points.append(f1.entry(await f1.mkSubmission(), { delta: 5 }));
+      await h.points.append(
+        f1.entry(await f1.mkSubmission(), { memberId: sib, delta: 9 }),
+      );
+      await h.points.append(f2.entry(await f2.mkSubmission(), { delta: 7 }));
+      expect(await h.points.listFor(f1.family, f1.kid)).toHaveLength(1);
+      expect(await h.points.listFor(f1.family, sib)).toHaveLength(1);
+      expect(
+        await h.points.listFor(f1.family, memberId("no-such-member")),
+      ).toEqual([]);
+    });
+
     it("scopes totals by family: another family's entries never count (§9)", async () => {
       const h = makeHarness();
       const f1 = await seedLedgerFamily(h);

@@ -23,7 +23,13 @@ import {
   listMembers,
   verifyKidPin,
 } from "@/usecases/members";
-import { type PointsTotalInput, pointsTotal } from "@/usecases/points";
+import {
+  type PointsHistoryInput,
+  type PointsHistoryItem,
+  type PointsTotalInput,
+  pointsHistory,
+  pointsTotal,
+} from "@/usecases/points";
 import { type SwitchProfileInput, switchProfile } from "@/usecases/profile";
 import {
   type DecideInput,
@@ -76,6 +82,8 @@ export interface Session {
   decide(input: DecideInput): Promise<Result<Submission>>;
   /** A member's running points total — any family member (§8.1). */
   pointsTotal(input: PointsTotalInput): Promise<Result<number>>;
+  /** A member's earning history (ledger, newest first) — any family member (§6, §8.1). */
+  pointsHistory(input: PointsHistoryInput): Promise<Result<PointsHistoryItem[]>>;
 }
 
 export interface App {
@@ -115,6 +123,8 @@ export function makeApp(ports: Ports): App {
         getReviewQueue: () => getReviewQueue(ports, ctx),
         decide: (input: DecideInput) => decide(ports, ctx, input),
         pointsTotal: (input: PointsTotalInput) => pointsTotal(ports, ctx, input),
+        pointsHistory: (input: PointsHistoryInput) =>
+          pointsHistory(ports, ctx, input),
       };
     },
     createFamily(input: CreateFamilyInput) {
